@@ -3825,8 +3825,10 @@ function Chloex:Window(guiconfig)
 		updateIdent()
 	end)
 
-	-- Footer status chips are read-only, so they carry no fill and no border: in
-	-- this window a filled shape always means "you can press this".
+	-- Footer status chips (Executor, FPS) are read-only, so they carry no fill and
+	-- no border. A pressable chip (Button = true, e.g. Join Discord) gets a fill and
+	-- a border: in this window a filled shape always means "you can press this", and
+	-- it also keeps the button visually apart from the flat chips next to it.
 	local function makepill(parent, pillconfig)
 		local pill = pillconfig.Button and instance.textbutton(parent) or instance.frame(parent)
 		if pillconfig.Button then
@@ -3835,16 +3837,24 @@ function Chloex:Window(guiconfig)
 		end
 		pill.Name = pillconfig.Name or "Pill"
 		pill.LayoutOrder = pillconfig.LayoutOrder or 1
-		pill.BackgroundColor3 = theme.Pill
-		pill.BackgroundTransparency = 1
+		pill.BackgroundColor3 = pillconfig.Button and theme.Element or theme.Pill
+		pill.BackgroundTransparency = pillconfig.Button and 0 or 1
 		pill.BorderSizePixel = 0
 		pill.AutomaticSize = Enum.AutomaticSize.X
 		pill.Size = UDim2.new(0, 0, 0, 22)
 		instance.uicorner(pill).CornerRadius = UDim.new(0, 5)
 
+		if pillconfig.Button then
+			local pillstroke = instance.uistroke(pill)
+			pillstroke.Name = "PillStroke"
+			pillstroke.Color = theme.Stroke
+			pillstroke.Thickness = 1
+			pillstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		end
+
 		local pad = instance.uipadding(pill)
-		pad.PaddingLeft = UDim.new(0, 4)
-		pad.PaddingRight = UDim.new(0, 4)
+		pad.PaddingLeft = UDim.new(0, pillconfig.Button and 8 or 4)
+		pad.PaddingRight = UDim.new(0, pillconfig.Button and 8 or 4)
 
 		local layout = instance.uilistlayout(pill)
 		layout.FillDirection = Enum.FillDirection.Horizontal
@@ -3887,7 +3897,7 @@ function Chloex:Window(guiconfig)
 	striplayout.FillDirection = Enum.FillDirection.Horizontal
 	striplayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
 	striplayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	striplayout.Padding = UDim.new(0, 6)
+	striplayout.Padding = UDim.new(0, 10)
 	striplayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 	if not isMobile then
@@ -3908,9 +3918,11 @@ function Chloex:Window(guiconfig)
 		discordicon.Size = UDim2.new(0, 12, 0, 12)
 		discordpill.MouseEnter:Connect(function()
 			discordlabel.TextColor3 = theme.Text
+			discordpill.BackgroundColor3 = theme.ElementHover
 		end)
 		discordpill.MouseLeave:Connect(function()
 			discordlabel.TextColor3 = theme.SubText
+			discordpill.BackgroundColor3 = theme.Element
 		end)
 		discordpill.Activated:Connect(function()
 			elevate()
