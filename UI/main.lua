@@ -1809,420 +1809,6 @@ function Chloex:Notify(notifyconfig)
 	})
 end
 
-local AnnounceGui, AnnounceHolder
-local announcesound = "rbxassetid://84088708071202"
-local ANNOUNCE_WIDTH = 420
-
-local function ensureannouncegui()
-	if AnnounceGui and AnnounceGui.Parent then
-		return AnnounceGui, AnnounceHolder
-	end
-
-	local parent = sv.coregui
-	pcall(function()
-		local ok, hidden = pcall(function()
-			return gethui()
-		end)
-		if ok and hidden then
-			parent = hidden
-		end
-	end)
-
-	pcall(function()
-		for _, name in ipairs({ "AnnounceGui", "VectaAnnounce" }) do
-			local old = parent:FindFirstChild(name) or sv.coregui:FindFirstChild(name)
-			if old then
-				pcall(function()
-					old:Destroy()
-				end)
-			end
-		end
-	end)
-
-	AnnounceGui = instance.screengui(parent)
-	AnnounceGui.Name = "AnnounceGui"
-	AnnounceGui.AutoLocalize = false
-	AnnounceGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	AnnounceGui.ResetOnSpawn = false
-	AnnounceGui.DisplayOrder = 10000
-
-	pcall(function()
-		if syn and syn.protect_gui then
-			syn.protect_gui(AnnounceGui)
-		elseif protect_gui then
-			protect_gui(AnnounceGui)
-		end
-	end)
-
-	AnnounceHolder = instance.frame(AnnounceGui)
-	AnnounceHolder.Name = "Holder"
-	AnnounceHolder.AnchorPoint = Vector2.new(0.5, 0)
-	AnnounceHolder.Position = UDim2.new(0.5, 0, 0, 24)
-	AnnounceHolder.Size = UDim2.new(0, ANNOUNCE_WIDTH, 1, -48)
-	AnnounceHolder.BackgroundTransparency = 1
-	AnnounceHolder.BorderSizePixel = 0
-
-	local list = instance.uilistlayout(AnnounceHolder)
-	list.Padding = UDim.new(0, 8)
-	list.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	list.VerticalAlignment = Enum.VerticalAlignment.Top
-	list.SortOrder = Enum.SortOrder.LayoutOrder
-
-	return AnnounceGui, AnnounceHolder
-end
-
-local function playannouncesound(id)
-	pcall(function()
-		elevate()
-		local sound = Instance.new("Sound")
-		sound.Name = "AnnounceSound"
-		sound.SoundId = id or announcesound
-		sound.Volume = 0.7
-		sound.Parent = AnnounceGui or sv.coregui
-
-		local ss = game:GetService("SoundService")
-		local played = false
-		if ss then
-			pcall(function()
-				ss:PlayLocalSound(sound)
-				played = true
-			end)
-		end
-		if not played then
-			sound:Play()
-		end
-
-		task.delay(6, function()
-			pcall(function()
-				sound:Destroy()
-			end)
-		end)
-	end)
-end
-
-local function resolveannouncesound(value)
-	if value == false then
-		return nil
-	end
-	local text = tostring(value == nil and "default" or value):lower()
-	if text == "off" or text == "none" or text == "false" or text == "0" then
-		return nil
-	end
-	if text == "default" or text == "true" or text == "" then
-		return announcesound
-	end
-	local id = tostring(value):gsub("^%s+", ""):gsub("%s+$", "")
-	if id:match("^%d+$") then
-		return "rbxassetid://" .. id
-	end
-	return id
-end
-
-local function countannouncelines(text, width, font, textSize, maxLines)
-	text = tostring(text or "")
-	if text == "" then
-		return 0
-	end
-	maxLines = maxLines or 6
-	width = math.floor(tonumber(width) or 0)
-
-	local lines
-	if width >= 20 then
-		local ok, bounds = pcall(function()
-			return measure(text, textSize, font, Vector2.new(width, 100000))
-		end)
-		if ok and bounds and bounds.Y > 0 then
-			lines = math.ceil(bounds.Y / (PIXEL_CUSTOM and ts(textSize) or (textSize + 2)))
-		end
-	end
-
-	if not lines then
-		local perLine = math.max(10, math.floor((width > 0 and width or 200) / (textSize * 0.52)))
-		lines = 0
-		for segment in (text .. "\n"):gmatch("(.-)\n") do
-			lines = lines + math.max(1, math.ceil(#segment / perLine))
-		end
-	end
-
-	return math.clamp(lines, 1, maxLines)
-end
-
-function Chloex:Announce(announceconfig)
-	announceconfig = announceconfig or {}
-	local content = tostring(
-		announceconfig.Content or announceconfig.Text or announceconfig.Description or announceconfig[2] or ""
-	)
-	local duration = tonumber(announceconfig.Duration or announceconfig.Time or announceconfig[3]) or 15
-	local soundid = resolveannouncesound(announceconfig.Sound)
-	local iconName = announceconfig.Icon or "rbxassetid://114954261913892"
-	if iconName == "megaphone" then
-		iconName = "rbxassetid://114954261913892"
-	end
-
-	local title
-	if announceconfig.Title or announceconfig[1] then
-		title = tostring(announceconfig.Title or announceconfig[1])
-		if announceconfig.Name and tostring(announceconfig.Name) ~= "" and not title:lower():find(tostring(announceconfig.Name):lower(), 1, true) then
-			title = tostring(announceconfig.Name) .. " " .. title
-		end
-	else
-		title = tostring(announceconfig.Name or "Vecta") .. " Announcements"
-	end
-
-	ensureannouncegui()
-
-	local PAD, BADGE, GAP = 14, 32, 12
-	local textLeft = PAD + BADGE + GAP
-	local textWidth = ANNOUNCE_WIDTH - textLeft - PAD - 28
-	local lines = content ~= "" and countannouncelines(content, textWidth, FONT_BOLD, 13, 8) or 0
-	local bodyH = lines > 0 and (lines * 17) or 0
-	-- who sent it (set by the server): "From Vecta [OWNER]" / "From Reyzanzu [STAFF]"
-	local sender = tostring(announceconfig.From or "")
-	local senderRole = tostring(announceconfig.Role or "")
-	local fromH = sender ~= "" and 16 or 0
-	local contentH = math.max(BADGE, 18 + fromH + (bodyH > 0 and (4 + bodyH) or 0))
-	local height = PAD + contentH + 14 + 4 + 8
-
-	local slot = instance.frame(AnnounceHolder)
-	slot.Name = "Slot"
-	slot.BackgroundTransparency = 1
-	slot.BorderSizePixel = 0
-	slot.Size = UDim2.new(1, 0, 0, height)
-	slot.ClipsDescendants = false
-
-	local card = instance.frame(slot)
-	card.Name = "Announcement"
-	card.BackgroundColor3 = theme.Card
-	card.BorderSizePixel = 0
-	card.AnchorPoint = Vector2.new(0.5, 0)
-	card.Position = UDim2.new(0.5, 0, 0, -height - 40)
-	card.Size = UDim2.new(1, 0, 1, 0)
-	card.BackgroundTransparency = 1
-	instance.uicorner(card).CornerRadius = UDim.new(0, 8)
-
-	local cardStroke = instance.uistroke(card)
-	cardStroke.Color = theme.Stroke
-	cardStroke.Thickness = 1
-	cardStroke.Transparency = 1
-
-	local scale = instance.uiscale(card)
-	scale.Scale = 0.96
-
-	local badge = instance.frame(card)
-	badge.Name = "Badge"
-	badge.BackgroundColor3 = theme.Element
-	badge.BorderSizePixel = 0
-	badge.Position = UDim2.new(0, PAD, 0, PAD)
-	badge.Size = UDim2.new(0, BADGE, 0, BADGE)
-	badge.BackgroundTransparency = 0
-	instance.uicorner(badge).CornerRadius = UDim.new(0, 6)
-
-	local badgeStroke = instance.uistroke(badge)
-	badgeStroke.Color = theme.Stroke
-	badgeStroke.Thickness = 1
-	badgeStroke.Transparency = 1
-
-	local badgeIcon = instance.imagelabel(badge)
-	badgeIcon.BackgroundTransparency = 1
-	badgeIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-	badgeIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
-	badgeIcon.Size = UDim2.new(0, 20, 0, 20)
-	badgeIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	badgeIcon.ImageTransparency = 1
-	applyicon(badgeIcon, iconName, 48)
-	if badgeIcon.Image == "" then
-		applyicon(badgeIcon, "zap", 48)
-	end
-
-	local badgeFallback = instance.textlabel(badge)
-	badgeFallback.BackgroundTransparency = 1
-	badgeFallback.Size = UDim2.new(1, 0, 1, 0)
-	badgeFallback.FontFace = FONT_BOLD
-	badgeFallback.Text = "!"
-	badgeFallback.TextColor3 = theme.Text
-	badgeFallback.TextSize = ts(16)
-	badgeFallback.TextTransparency = 1
-	badgeFallback.Visible = (badgeIcon.Image == "")
-
-	local titleLabel = instance.textlabel(card)
-	titleLabel.BackgroundTransparency = 1
-	titleLabel.Position = UDim2.new(0, textLeft, 0, PAD)
-	titleLabel.Size = UDim2.new(1, -textLeft - PAD - 26, 0, 18)
-	titleLabel.FontFace = FONT_BOLD
-	titleLabel.Text = title
-	titleLabel.TextColor3 = theme.Text
-	titleLabel.TextSize = ts(14)
-	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-	titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	titleLabel.TextTransparency = 1
-
-	local fromLabel = nil
-	if sender ~= "" then
-		local badgeText = ""
-		if senderRole == "owner" then
-			badgeText = '  <font color="#EF4444"><b>[OWNER]</b></font>'
-		elseif senderRole == "staff" then
-			badgeText = '  <font color="#A855F7"><b>[STAFF]</b></font>'
-		end
-		fromLabel = instance.textlabel(card)
-		fromLabel.BackgroundTransparency = 1
-		fromLabel.Position = UDim2.new(0, textLeft, 0, PAD + 18 + 1)
-		fromLabel.Size = UDim2.new(1, -textLeft - PAD - 26, 0, 14)
-		fromLabel.FontFace = FONT_BOLD
-		fromLabel.RichText = true
-		fromLabel.Text = '<font color="' .. hexcolor(theme.SubText) .. '">From</font>  <b>' .. escaperich(sender) .. "</b>" .. badgeText
-		fromLabel.TextColor3 = theme.Text
-		fromLabel.TextSize = ts(12)
-		fromLabel.TextXAlignment = Enum.TextXAlignment.Left
-		fromLabel.TextTruncate = Enum.TextTruncate.AtEnd
-		fromLabel.TextTransparency = 1
-	end
-
-	local descLabel = nil
-	if content ~= "" then
-		descLabel = instance.textlabel(card)
-		descLabel.BackgroundTransparency = 1
-		descLabel.Position = UDim2.new(0, textLeft, 0, PAD + 18 + 4 + fromH)
-		descLabel.Size = UDim2.new(1, -textLeft - PAD, 0, bodyH)
-		descLabel.FontFace = FONT_BOLD
-		descLabel.Text = content
-		descLabel.TextColor3 = theme.Text
-		descLabel.TextSize = ts(13)
-		descLabel.TextXAlignment = Enum.TextXAlignment.Left
-		descLabel.TextYAlignment = Enum.TextYAlignment.Top
-		descLabel.TextWrapped = true
-		descLabel.TextTransparency = 1
-	end
-
-	local closeButton = instance.textbutton(card)
-	closeButton.Name = "Close"
-	closeButton.AnchorPoint = Vector2.new(1, 0)
-	closeButton.Position = UDim2.new(1, -10, 0, 10)
-	closeButton.Size = UDim2.new(0, 24, 0, 24)
-	closeButton.BackgroundColor3 = theme.Element
-	closeButton.BackgroundTransparency = 1
-	closeButton.BorderSizePixel = 0
-	closeButton.Text = ""
-	closeButton.AutoButtonColor = false
-	closeButton.ZIndex = 3
-	instance.uicorner(closeButton).CornerRadius = UDim.new(0, 6)
-
-	local closeIcon = instance.imagelabel(closeButton)
-	closeIcon.BackgroundTransparency = 1
-	closeIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-	closeIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
-	closeIcon.Size = UDim2.new(0, 12, 0, 12)
-	closeIcon.ImageColor3 = theme.SubText
-	closeIcon.ImageTransparency = 1
-	closeIcon.ZIndex = 4
-	applyicon(closeIcon, "x", 48)
-
-	local closeText = nil
-	if closeIcon.Image == "" then
-		closeText = instance.textlabel(closeButton)
-		closeText.BackgroundTransparency = 1
-		closeText.Size = UDim2.new(1, 0, 1, 0)
-		closeText.FontFace = FONT_BOLD
-		closeText.Text = "×"
-		closeText.TextColor3 = theme.SubText
-		closeText.TextSize = ts(16)
-		closeText.TextTransparency = 1
-		closeText.ZIndex = 4
-	end
-
-	local track = instance.frame(card)
-	track.Name = "Track"
-	track.BackgroundColor3 = theme.Track
-	track.BorderSizePixel = 0
-	track.AnchorPoint = Vector2.new(0, 1)
-	track.Position = UDim2.new(0, PAD, 1, -10)
-	track.Size = UDim2.new(1, -PAD * 2, 0, 3)
-	track.BackgroundTransparency = 1
-	instance.uicorner(track).CornerRadius = UDim.new(0, 2)
-
-	local bar = instance.frame(track)
-	bar.Name = "Bar"
-	bar.BackgroundColor3 = announceconfig.Color or theme.Accent
-	bar.BorderSizePixel = 0
-	bar.Size = UDim2.new(1, 0, 1, 0)
-	bar.BackgroundTransparency = 1
-	instance.uicorner(bar).CornerRadius = UDim.new(0, 2)
-
-	local ENTER = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-	local FADE = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-	sv.ts:Create(card, ENTER, { Position = UDim2.new(0.5, 0, 0, 0) }):Play()
-	sv.ts:Create(scale, ENTER, { Scale = 1 }):Play()
-	sv.ts:Create(card, FADE, { BackgroundTransparency = 0 }):Play()
-	sv.ts:Create(cardStroke, FADE, { Transparency = 0 }):Play()
-	sv.ts:Create(badge, FADE, { BackgroundTransparency = 0 }):Play()
-	sv.ts:Create(badgeStroke, FADE, { Transparency = 0 }):Play()
-	sv.ts:Create(badgeIcon, FADE, { ImageTransparency = 0 }):Play()
-	sv.ts:Create(badgeFallback, FADE, { TextTransparency = 0 }):Play()
-	sv.ts:Create(titleLabel, FADE, { TextTransparency = 0 }):Play()
-	sv.ts:Create(closeIcon, FADE, { ImageTransparency = 0 }):Play()
-	if closeText then sv.ts:Create(closeText, FADE, { TextTransparency = 0 }):Play() end
-	if descLabel then sv.ts:Create(descLabel, FADE, { TextTransparency = 0.15 }):Play() end
-	if fromLabel then sv.ts:Create(fromLabel, FADE, { TextTransparency = 0 }):Play() end
-	sv.ts:Create(track, FADE, { BackgroundTransparency = 0.4 }):Play()
-	sv.ts:Create(bar, FADE, { BackgroundTransparency = 0 }):Play()
-	sv.ts:Create(bar, TweenInfo.new(duration, Enum.EasingStyle.Linear), { Size = UDim2.new(0, 0, 1, 0) }):Play()
-
-	if soundid then
-		playannouncesound(soundid)
-	end
-
-	local closed = false
-	local function close()
-		elevate()
-		if closed then return end
-		closed = true
-		local OUT = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		sv.ts:Create(card, OUT, { Position = UDim2.new(0.5, 0, 0, -height - 40), BackgroundTransparency = 1 }):Play()
-		sv.ts:Create(scale, OUT, { Scale = 0.96 }):Play()
-		sv.ts:Create(cardStroke, OUT, { Transparency = 1 }):Play()
-		sv.ts:Create(badge, OUT, { BackgroundTransparency = 1 }):Play()
-		sv.ts:Create(badgeStroke, OUT, { Transparency = 1 }):Play()
-		sv.ts:Create(badgeIcon, OUT, { ImageTransparency = 1 }):Play()
-		sv.ts:Create(badgeFallback, OUT, { TextTransparency = 1 }):Play()
-		sv.ts:Create(titleLabel, OUT, { TextTransparency = 1 }):Play()
-		sv.ts:Create(closeIcon, OUT, { ImageTransparency = 1 }):Play()
-		if closeText then sv.ts:Create(closeText, OUT, { TextTransparency = 1 }):Play() end
-		if descLabel then sv.ts:Create(descLabel, OUT, { TextTransparency = 1 }):Play() end
-		if fromLabel then sv.ts:Create(fromLabel, OUT, { TextTransparency = 1 }):Play() end
-		sv.ts:Create(track, OUT, { BackgroundTransparency = 1 }):Play()
-		sv.ts:Create(bar, OUT, { BackgroundTransparency = 1 }):Play()
-		task.delay(0.24, function()
-			elevate()
-			pcall(function() slot:Destroy() end)
-		end)
-	end
-
-	closeButton.MouseEnter:Connect(function()
-		elevate()
-		sv.ts:Create(closeButton, TweenInfo.new(0.16), { BackgroundTransparency = 0 }):Play()
-		sv.ts:Create(closeIcon, TweenInfo.new(0.16), { ImageColor3 = theme.Text }):Play()
-		if closeText then sv.ts:Create(closeText, TweenInfo.new(0.16), { TextColor3 = theme.Text }):Play() end
-	end)
-	closeButton.MouseLeave:Connect(function()
-		elevate()
-		sv.ts:Create(closeButton, TweenInfo.new(0.16), { BackgroundTransparency = 1 }):Play()
-		sv.ts:Create(closeIcon, TweenInfo.new(0.16), { ImageColor3 = theme.SubText }):Play()
-		if closeText then sv.ts:Create(closeText, TweenInfo.new(0.16), { TextColor3 = theme.SubText }):Play() end
-	end)
-	closeButton.MouseButton1Click:Connect(function()
-		close()
-	end)
-
-	task.delay(duration, function()
-		if not closed then
-			close()
-		end
-	end)
-
-	return { Close = close }
-end
-
 function Chloex:Prompt(promptconfig)
 	promptconfig = promptconfig or {}
 	local title = tostring(promptconfig.Title or "Vecta")
@@ -2587,12 +2173,8 @@ local function applydonatorlocks()
 		else
 			-- Locked2/DonatorOnly elements open only for a donator; a trial key
 			-- leaves them locked. Ordinary elements open for donator OR trial.
-			local unlocked
-			if lock.DonatorOnly then
-				unlocked = donator
-			else
-				unlocked = donator or trial
-			end
+			-- tiers are gone: every element is always unlocked
+			local unlocked = true
 			if unlocked then
 				pcall(lock.Unlock, lock)
 			else
@@ -2644,10 +2226,7 @@ end
 -- Ordinary Locked/Donator elements open for donator OR trial; Locked2/
 -- DonatorOnly elements open only for a real donator (trial stays locked).
 local function tierallows(donatoronly)
-	if donatoronly then
-		return Chloex._isDonator == true
-	end
-	return Chloex._isDonator == true or Chloex._isTrial == true
+	return true
 end
 
 function Chloex:IsDonator()
@@ -2761,23 +2340,6 @@ local function localdisplayname()
 		return lp and lp.DisplayName
 	end)
 	return tostring(ok and name or "")
-end
-
-local function isowner()
-	if localusername():lower() == "aevinexyz" or localuserid() == "8478064806" then
-		return true
-	end
-	if getgenv and getgenv().SenaIsOwner == true then
-		return true
-	end
-	if _G and _G.SenaIsOwner == true then
-		return true
-	end
-	return false
-end
-
-function Chloex:IsOwner()
-	return isowner()
 end
 
 local function detectgamename()
@@ -3288,16 +2850,6 @@ local function startbackendloop(this)
 							if id > this.AnnSince then
 								this.AnnSince = id
 							end
-							if this.Announcements then
-								Chloex:Announce({
-									Title = ann.title,
-									Content = ann.text,
-									Duration = tonumber(ann.duration) or 15,
-									Sound = ann.sound,
-									From = ann.from,
-									Role = ann.role,
-								})
-							end
 						end
 					end
 				end
@@ -3583,13 +3135,12 @@ function Chloex:SendChat(text, room, hide)
 		sendtext = tag .. " " .. text
 	end
 
-	local owner = isowner()
-	local trial = not owner and istrial()
-	local don = not owner and not trial and isdonator()
+	local trial = istrial()
+	local don = not trial and isdonator()
 	local lic = (getgenv and getgenv().SenaKey) or (_G and _G.SenaKey) or ""
 
 	local ishide = false
-	if not owner then
+	do
 		if hide ~= nil then
 			ishide = (hide == true or hide == "1" or hide == 1)
 		elseif getgenv and getgenv().SenaHideName ~= nil then
@@ -3606,14 +3157,12 @@ function Chloex:SendChat(text, room, hide)
 	local data = httpgetjson(backendurl("/chat/send", {
 		uid = localuserid(),
 		key = backend.Key,
-		name = owner and "Vecta" or localusername(),
+		name = localusername(),
 		game = backend.Game,
 		text = sendtext,
 		room = room,
 		donator = don and "1" or "0",
 		trial = trial and "1" or "0",
-		owner = owner and "1" or "0",
-		tier = owner and "owner" or (trial and "trial" or (don and "donator" or "free")),
 		lic = tostring(lic or ""),
 		hide = ishide and "1" or "0",
 	}))
@@ -3936,77 +3485,6 @@ function Chloex:Window(guiconfig)
 		return row
 	end
 
-	-- Join Discord chip: always the leftmost chip (LayoutOrder 0, the hub's own
-	-- chips such as Ping start at 1). Click copies the invite link.
-	do
-		local DISCORD_LINK = "https://discord.gg/NNYG29yXDv"
-		local chip = instance.textbutton(headerchips.holder)
-		chip.Name = "JoinDiscord"
-		chip.Text = ""
-		chip.AutoButtonColor = false
-		chip.LayoutOrder = 0
-		chip.Size = UDim2.new(0, 0, 0, 22)
-		chip.AutomaticSize = Enum.AutomaticSize.X
-		chip.BackgroundColor3 = theme.Pill
-		chip.BorderSizePixel = 0
-		instance.uicorner(chip).CornerRadius = UDim.new(0, 5)
-		local chipstroke = instance.uistroke(chip)
-		chipstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		chipstroke.Color = theme.Stroke
-		chipstroke.Transparency = 0.3
-		local pad = instance.uipadding(chip)
-		pad.PaddingLeft = UDim.new(0, 5)
-		pad.PaddingRight = UDim.new(0, 8)
-		local lay = instance.uilistlayout(chip)
-		lay.FillDirection = Enum.FillDirection.Horizontal
-		lay.VerticalAlignment = Enum.VerticalAlignment.Center
-		lay.SortOrder = Enum.SortOrder.LayoutOrder
-		lay.Padding = UDim.new(0, 4)
-
-		local img = instance.imagelabel(chip)
-		img.BackgroundTransparency = 1
-		img.ScaleType = Enum.ScaleType.Fit
-		img.Size = UDim2.new(0, 14, 0, 14)
-		img.LayoutOrder = 1
-		applyicon(img, "5420367332", 48)
-
-		local label = instance.textlabel(chip)
-		label.BackgroundTransparency = 1
-		label.FontFace = FONT_MEDIUM
-		label.TextSize = ts(12)
-		label.TextColor3 = theme.Text
-		label.Text = "Join Discord"
-		label.Size = UDim2.new(0, 0, 1, 0)
-		label.AutomaticSize = Enum.AutomaticSize.X
-		label.LayoutOrder = 2
-
-		chip.MouseEnter:Connect(function()
-			chip.BackgroundColor3 = theme.ElementHover
-		end)
-		chip.MouseLeave:Connect(function()
-			chip.BackgroundColor3 = theme.Pill
-		end)
-
-		local resetting = 0
-		chip.Activated:Connect(function()
-			elevate()
-			local ok = clipboardwrite(DISCORD_LINK)
-			resetting = resetting + 1
-			local mine = resetting
-			label.Text = ok and "Copied!" or "No clipboard"
-			label.TextColor3 = ok and theme.Good or theme.Bad
-			if not ok then
-				warn("[Vecta] Discord: " .. DISCORD_LINK)
-			end
-			task.delay(1.5, function()
-				if mine == resetting and label.Parent then
-					label.Text = "Join Discord"
-					label.TextColor3 = theme.Text
-				end
-			end)
-		end)
-	end
-
 	local close = instance.textbutton(top)
 	close.Name = "Close"
 	close.FontFace = FONT_MEDIUM
@@ -4313,7 +3791,7 @@ function Chloex:Window(guiconfig)
 	username.BackgroundTransparency = 1
 	username.FontFace = FONT_MEDIUM
 	username.TextColor3 = Color3.fromRGB(255, 255, 255)
-	username.TextSize = ts(12)
+	username.TextSize = 7
 	username.TextXAlignment = Enum.TextXAlignment.Left
 	username.Position = UDim2.new(0, 42, 0, 0)
 	username.Size = UDim2.new(0, 140, 1, 0)
@@ -4380,7 +3858,7 @@ function Chloex:Window(guiconfig)
 			icon = instance.imagelabel(pill)
 			icon.LayoutOrder = 1
 			icon.BackgroundTransparency = 1
-			icon.Size = UDim2.new(0, 12, 0, 12)
+			icon.Size = UDim2.new(0, 11, 0, 11)
 			icon.ImageColor3 = pillconfig.Color or theme.SubText
 			applyicon(icon, pillconfig.Icon, 48)
 		end
@@ -4393,7 +3871,7 @@ function Chloex:Window(guiconfig)
 		label.FontFace = FONT_BOLD
 		label.Text = pillconfig.Text or ""
 		label.TextColor3 = pillconfig.Color or theme.SubText
-		label.TextSize = ts(11)
+		label.TextSize = 7
 
 		return pill, label, icon
 	end
@@ -4428,7 +3906,7 @@ function Chloex:Window(guiconfig)
 		})
 		-- keep the logo's own colours instead of the grey chip tint
 		discordicon.ImageColor3 = Color3.new(1, 1, 1)
-		discordicon.Size = UDim2.new(0, 14, 0, 14)
+		discordicon.Size = UDim2.new(0, 12, 0, 12)
 		discordpill.MouseEnter:Connect(function()
 			discordlabel.TextColor3 = theme.Text
 		end)
@@ -4533,16 +4011,7 @@ function Chloex:Window(guiconfig)
 			sv.coregui.ToggleUIButton:Destroy()
 		end
 
-		if sv.coregui:FindFirstChild("AnnounceGui") then
-			sv.coregui.AnnounceGui:Destroy()
-		end
-		-- AnnounceGui can live under gethui(); overlays and notifications belong
-		-- to this instance too, so they go with it
-		pcall(function()
-			if AnnounceGui then
-				AnnounceGui:Destroy()
-			end
-		end)
+		-- overlays and notifications belong to this instance too, so they go with it
 		for _, child in ipairs(sv.coregui:GetChildren()) do
 			if child.Name == "OverlayGui" or child.Name == "NotifyGui" then
 				pcall(function()
@@ -4795,7 +4264,7 @@ function Chloex:Window(guiconfig)
 		local ttitle = instance.textlabel(t)
 		ttitle.Name = "ToggleTitle"
 		ttitle.FontFace = FONT_BOLD
-		ttitle.TextSize = ts(13)
+		ttitle.TextSize = ts(13) + 1
 		ttitle.TextColor3 = theme.Text
 		ttitle.TextXAlignment = Enum.TextXAlignment.Left
 		ttitle.TextYAlignment = Enum.TextYAlignment.Top
@@ -4848,7 +4317,7 @@ function Chloex:Window(guiconfig)
 		stitle.Name = "SliderTitle"
 		stitle.FontFace = FONT_BOLD
 		stitle.TextColor3 = theme.Text
-		stitle.TextSize = ts(13)
+		stitle.TextSize = ts(13) + 1
 		stitle.TextXAlignment = Enum.TextXAlignment.Left
 		stitle.TextYAlignment = Enum.TextYAlignment.Center
 		stitle.TextTruncate = Enum.TextTruncate.AtEnd
@@ -5206,7 +4675,7 @@ function Chloex:Window(guiconfig)
 		label.RichText = true
 		label.Text = text
 		label.TextColor3 = theme.SubText
-		label.TextSize = ts(CONTENT_SIZE)
+		label.TextSize = math.max(7, ts(CONTENT_SIZE) - 1)
 		label.TextWrapped = true
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.TextYAlignment = Enum.TextYAlignment.Top
@@ -6076,7 +5545,7 @@ function Chloex:Window(guiconfig)
 				paragraphtitle.FontFace = FONT_BOLD
 				paragraphtitle.Text = paragraphconfig.Title
 				paragraphtitle.TextColor3 = theme.Text
-				paragraphtitle.TextSize = ts(13)
+				paragraphtitle.TextSize = ts(13) + 1
 				paragraphtitle.TextXAlignment = Enum.TextXAlignment.Left
 				paragraphtitle.TextYAlignment = Enum.TextYAlignment.Top
 				paragraphtitle.TextTruncate = Enum.TextTruncate.AtEnd
@@ -6091,7 +5560,7 @@ function Chloex:Window(guiconfig)
 				paragraphcontent.Text = paragraphconfig.Content
 				paragraphcontent.TextColor3 = theme.Text
 				paragraphcontent.TextTransparency = 0.12
-				paragraphcontent.TextSize = ts(12)
+				paragraphcontent.TextSize = math.max(7, ts(12) - 1)
 				paragraphcontent.TextXAlignment = Enum.TextXAlignment.Left
 				paragraphcontent.TextYAlignment = Enum.TextYAlignment.Top
 				paragraphcontent.BackgroundTransparency = 1
@@ -6258,7 +5727,7 @@ function Chloex:Window(guiconfig)
 				title.FontFace = FONT_BOLD
 				title.Text = tostring(gridconfig.Title or "Collection")
 				title.TextColor3 = theme.Text
-				title.TextSize = ts(13)
+				title.TextSize = ts(13) + 1
 				title.TextXAlignment = Enum.TextXAlignment.Left
 				title.TextTruncate = Enum.TextTruncate.AtEnd
 				title.BackgroundTransparency = 1
@@ -6760,7 +6229,7 @@ function Chloex:Window(guiconfig)
 				title.FontFace = FONT_BOLD
 				title.Text = tostring(listconfig.Title)
 				title.TextColor3 = theme.Text
-				title.TextSize = ts(13)
+				title.TextSize = ts(13) + 1
 				title.TextTruncate = Enum.TextTruncate.AtEnd
 				title.TextXAlignment = Enum.TextXAlignment.Left
 				title.TextYAlignment = Enum.TextYAlignment.Top
@@ -7280,7 +6749,7 @@ function Chloex:Window(guiconfig)
 					title.FontFace = FONT_BOLD
 					title.Text = tostring(buttonconfig.Title)
 					title.TextColor3 = theme.Text
-					title.TextSize = ts(13)
+					title.TextSize = ts(13) + 1
 					title.TextTruncate = Enum.TextTruncate.AtEnd
 					title.TextXAlignment = Enum.TextXAlignment.Left
 					title.TextYAlignment = Enum.TextYAlignment.Top
@@ -7922,7 +7391,7 @@ function Chloex:Window(guiconfig)
 				local inputtitle = instance.textlabel(inputcontainer)
 				inputtitle.FontFace = FONT_BOLD
 				inputtitle.Text = inputconfig.Title
-				inputtitle.TextSize = ts(13)
+				inputtitle.TextSize = ts(13) + 1
 				inputtitle.TextColor3 = theme.Text
 				inputtitle.TextTruncate = Enum.TextTruncate.AtEnd
 				inputtitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -8209,7 +7678,7 @@ function Chloex:Window(guiconfig)
 				dropdowntitle.FontFace = FONT_BOLD
 				dropdowntitle.Text = dropdownconfig.Title
 				dropdowntitle.TextColor3 = theme.Text
-				dropdowntitle.TextSize = ts(13)
+				dropdowntitle.TextSize = ts(13) + 1
 				dropdowntitle.TextTruncate = Enum.TextTruncate.AtEnd
 				dropdowntitle.TextXAlignment = Enum.TextXAlignment.Left
 				dropdowntitle.BackgroundTransparency = 1
@@ -9097,9 +8566,6 @@ function Chloex:Window(guiconfig)
 						showname = getgenv().SenaHideName ~= true
 					end
 				end)
-				if isowner() then
-					showname = true
-				end
 
 				local function basepayload(extra)
 					local trial = istrial()
@@ -9538,7 +9004,7 @@ function Chloex:Window(guiconfig)
 				title.Size = UDim2.new(1, -250, 0, 16)
 				title.Text = tostring(forumconfig.Title or "Community Setups")
 				title.TextColor3 = theme.Text
-				title.TextSize = ts(13)
+				title.TextSize = ts(13) + 1
 				title.TextTruncate = Enum.TextTruncate.AtEnd
 				title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -10436,7 +9902,7 @@ function Chloex:Window(guiconfig)
 					meta.LayoutOrder = 2
 					meta.RichText = true
 					meta.Size = UDim2.new(1, 0, 0, 14)
-					local who = post.owner and ('<font color="' .. goldhex .. '">Vecta</font>') or escaperich(post.name or "??****")
+					local who = escaperich(post.name or "??****")
 					local metatext = "by " .. who .. "  ·  " .. timeago(post.updated or post.ts)
 					if post.cfg_version and post.cfg_version ~= "" then
 						metatext = metatext .. "  ·  v" .. escaperich(post.cfg_version)
@@ -11045,9 +10511,6 @@ function Chloex:Window(guiconfig)
 
 	tabs.Notify = function(self, ...)
 		return Chloex:Notify(...)
-	end
-	tabs.Announce = function(self, ...)
-		return Chloex:Announce(...)
 	end
 
 	return tabs
