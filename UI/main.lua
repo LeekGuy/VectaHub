@@ -2416,6 +2416,62 @@ local function publishkey(key, info)
 	writetierglobals()
 end
 
+
+-- Key names shown on keybind buttons (the full name is still what is saved).
+Chloex.KeyShortNames = {
+	LeftControl = "LCtrl", RightControl = "RCtrl",
+	LeftShift = "LShift", RightShift = "RShift",
+	LeftAlt = "LAlt", RightAlt = "RAlt",
+	LeftMeta = "LMeta", RightMeta = "RMeta",
+	Return = "Enter", Backspace = "Bksp", Escape = "Esc", CapsLock = "Caps",
+	Delete = "Del", Insert = "Ins", PageUp = "PgUp", PageDown = "PgDn",
+	Zero = "0", One = "1", Two = "2", Three = "3", Four = "4",
+	Five = "5", Six = "6", Seven = "7", Eight = "8", Nine = "9",
+	KeypadZero = "Num0", KeypadOne = "Num1", KeypadTwo = "Num2", KeypadThree = "Num3",
+	KeypadFour = "Num4", KeypadFive = "Num5", KeypadSix = "Num6", KeypadSeven = "Num7",
+	KeypadEight = "Num8", KeypadNine = "Num9", KeypadPeriod = "Num.", KeypadDivide = "Num/",
+	KeypadMultiply = "Num*", KeypadMinus = "Num-", KeypadPlus = "Num+",
+	KeypadEnter = "NumEnter", KeypadEquals = "Num=",
+	Backquote = "`", Minus = "-", Equals = "=", LeftBracket = "[", RightBracket = "]",
+	BackSlash = "\\", Semicolon = ";", Quote = "'", Comma = ",", Period = ".", Slash = "/",
+}
+
+-- Anything a script or a saved config may hold for a key (Enum.KeyCode item,
+-- "F3", "f3", "None", nil) becomes an Enum.KeyCode; unknown input = Unknown.
+function Chloex:ParseKeyCode(value)
+	if typeof(value) == "EnumItem" then
+		if value.EnumType == Enum.KeyCode then
+			return value
+		end
+		return Enum.KeyCode.Unknown
+	end
+	if type(value) == "string" then
+		local name = value:gsub("%s+", "")
+		if name == "" or name:lower() == "none" then
+			return Enum.KeyCode.Unknown
+		end
+		local ok, found = pcall(function()
+			return Enum.KeyCode[name]
+		end)
+		if ok and found then
+			return found
+		end
+		for _, item in ipairs(Enum.KeyCode:GetEnumItems()) do
+			if item.Name:lower() == name:lower() then
+				return item
+			end
+		end
+	end
+	return Enum.KeyCode.Unknown
+end
+
+function Chloex:KeyCodeLabel(keycode)
+	if not keycode or keycode == Enum.KeyCode.Unknown then
+		return "None"
+	end
+	return Chloex.KeyShortNames[keycode.Name] or keycode.Name
+end
+
 function Chloex:GetSavedKey()
 	local rawkey = (getgenv and (getgenv().SenaKey or getgenv().SenaDonatorKey or (getgenv().SenaDonator and getgenv().SenaDonator.Key)))
 		or (_G and (_G.SenaKey or _G.SenaDonatorKey))
@@ -4137,20 +4193,52 @@ function Chloex:Window(guiconfig)
 		end)
 	end)
 
+
+	-- Window show/hide key. Set it with WindowKeybind (alias ToggleKey) in :Window, or at
+	-- runtime with Window:SetWindowKeybind(Enum.KeyCode.RightShift). "None" or
+	-- Enum.KeyCode.Unknown turns the shortcut off. The default stays F3.
 	local togglekey = Enum.KeyCode.F3
+	do
+		local configured = guiconfig.WindowKeybind
+		if configured == nil then
+			configured = guiconfig.ToggleKey
+		end
+		if configured ~= nil then
+			togglekey = Chloex:ParseKeyCode(configured)
+		end
+	end
 	trackConnection(
 		sv.uis.InputBegan:Connect(function(input, gpe)
-			if gpe then
+			if gpe or togglekey == Enum.KeyCode.Unknown then
 				return
 			end
-			if input.KeyCode == togglekey then
-				if dropshadowholder then
-					dropshadowholder.Visible = not dropshadowholder.Visible
-				end
+			if input.UserInputType ~= Enum.UserInputType.Keyboard or input.KeyCode ~= togglekey then
+				return
+			end
+			-- the key that is being (re)bound on a keybind row must not also hide the window
+			local kb = guifunc.Keybinds
+			if kb and (kb.cancel or os.clock() < kb.blockuntil) then
+				return
+			end
+			if dropshadowholder then
+				dropshadowholder.Visible = not dropshadowholder.Visible
 			end
 		end),
 		"window.togglekey"
 	)
+
+	function guifunc:SetWindowKeybind(value)
+		if type(self) ~= "table" then
+			value = self
+		end
+		togglekey = Chloex:ParseKeyCode(value)
+		return togglekey
+	end
+
+	function guifunc:GetWindowKeybind()
+		return togglekey
+	end
+
 
 	-- Resize the floating logo after the window exists. Works as
 	-- Window:SetLogoSize(64) and Window.SetLogoSize(64); returns the applied size.
@@ -4304,6 +4392,17 @@ function Chloex:Window(guiconfig)
 			size = self
 		end
 		return guifunc:SetLogoSize(size)
+	end
+
+	function tabs:SetWindowKeybind(value)
+		if type(self) ~= "table" or self ~= tabs then
+			value = self
+		end
+		return guifunc:SetWindowKeybind(value)
+	end
+
+	function tabs:GetWindowKeybind()
+		return guifunc:GetWindowKeybind()
 	end
 	function tabs:SetHeaderChips(list)
 		list = type(list) == "table" and list or {}
@@ -7006,12 +7105,219 @@ function Chloex:Window(guiconfig)
 					end
 				end)
 
+
+				-- Keybind button left of the switch: press the bound key to flip this toggle.
+				-- Turn it off for one toggle with Keybind = false (or KeybindEnabled = false),
+				-- for the whole window with ToggleKeybinds = false in :Window. Keybind = Enum.KeyCode.X
+				-- (or "X") sets the default key. Click the button, press a key; Esc cancels,
+				-- Backspace clears. Touch devices have no keyboard, so no button there.
+				local keyenabled = not isMobile
+					and toggleconfig.Keybind ~= false
+					and toggleconfig.KeybindEnabled ~= false
+					and guiconfig.ToggleKeybinds ~= false
+				local keybtn = nil
+				local keystroke = nil
+				local kbdefault = Chloex:ParseKeyCode(toggleconfig.Keybind)
+				local kbvalue = kbdefault
+				local kbkey = "ToggleKeybind_" .. configkey:sub(8)
+				local kblistening = false
+				local kbfunc = { Value = kbvalue, DefaultValue = kbdefault }
+				local relayoutdesc = nil
+
+				local function kbinset()
+					if keybtn then
+						return math.max(40, keybtn.AbsoluteSize.X) + 8
+					end
+					return 0
+				end
+
+				-- the title (and the description under it) leave room for the key button
+				local function fittoggletitle()
+					toggletitle.Size = UDim2.new(1, -(72 + kbinset()), 0, 14)
+					if relayoutdesc then
+						relayoutdesc()
+					end
+				end
+
+				local setkblistening = function() end
+				local applykb = function() end
+
+				if keyenabled then
+					guifunc.Keybinds = guifunc.Keybinds or { cancel = nil, blockuntil = 0 }
+					local shared = guifunc.Keybinds
+
+					keybtn = instance.textbutton(toggle)
+					keybtn.Name = "KeyBtn"
+					keybtn.FontFace = FONT_BOLD
+					keybtn.AutoButtonColor = false
+					keybtn.AnchorPoint = Vector2.new(1, 0.5)
+					keybtn.Position = UDim2.new(1, -61, 0.5, 0)
+					keybtn.Size = UDim2.new(0, 40, 0, 20)
+					keybtn.AutomaticSize = Enum.AutomaticSize.X
+					keybtn.BackgroundColor3 = theme.Field
+					keybtn.BackgroundTransparency = 0
+					keybtn.BorderSizePixel = 0
+					keybtn.TextSize = ts(11)
+					keybtn.TextColor3 = theme.Dim
+					keybtn.TextTruncate = Enum.TextTruncate.AtEnd
+					keybtn.Text = "None"
+					instance.uicorner(keybtn).CornerRadius = UDim.new(0, 4)
+					local keypadding = instance.uipadding(keybtn)
+					keypadding.PaddingLeft = UDim.new(0, 6)
+					keypadding.PaddingRight = UDim.new(0, 6)
+					instance.uisizeconstraint(keybtn).MaxSize = Vector2.new(90, 20)
+					keystroke = instance.uistroke(keybtn)
+					keystroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					keystroke.Color = Color3.fromRGB(255, 255, 255)
+					keystroke.Thickness = 1
+					keystroke.Transparency = 0.9
+
+					keybtn:GetPropertyChangedSignal("AbsoluteSize"):Connect(fittoggletitle)
+
+					local function renderkb(instant)
+						elevate()
+						local textcolor, strokecolor, stroketransparency
+						if kblistening then
+							keybtn.Text = "..."
+							textcolor = guiconfig.Color
+							strokecolor = guiconfig.Color
+							stroketransparency = 0
+						else
+							keybtn.Text = Chloex:KeyCodeLabel(kbvalue)
+							textcolor = kbvalue ~= Enum.KeyCode.Unknown and theme.Text or theme.Dim
+							strokecolor = Color3.fromRGB(255, 255, 255)
+							stroketransparency = 0.9
+						end
+						if instant then
+							keybtn.TextColor3 = textcolor
+							keystroke.Color = strokecolor
+							keystroke.Transparency = stroketransparency
+						else
+							sv.ts:Create(keybtn, TweenInfo.new(0.15), { TextColor3 = textcolor }):Play()
+							sv.ts:Create(keystroke, TweenInfo.new(0.15), { Color = strokecolor, Transparency = stroketransparency }):Play()
+						end
+					end
+
+					local function stopkb()
+						setkblistening(false)
+					end
+					setkblistening = function(state)
+						if state == kblistening then
+							return
+						end
+						kblistening = state
+						if state then
+							if shared.cancel and shared.cancel ~= stopkb then
+								shared.cancel()
+							end
+							shared.cancel = stopkb
+						else
+							if shared.cancel == stopkb then
+								shared.cancel = nil
+							end
+							shared.blockuntil = os.clock() + 0.25
+						end
+						renderkb()
+					end
+
+					applykb = function(value, save)
+						elevate()
+						kbvalue = Chloex:ParseKeyCode(value)
+						kbfunc.Value = kbvalue
+						if save then
+							config.data[kbkey] = kbvalue == Enum.KeyCode.Unknown and "None" or kbvalue.Name
+							config:queuesave()
+						end
+						renderkb(true)
+					end
+
+					keybtn.Activated:Connect(function()
+						if islocked then
+							return
+						end
+						setkblistening(not kblistening)
+					end)
+
+					trackConnection(
+						sv.uis.InputBegan:Connect(function(input, gpe)
+							if kblistening then
+								if input.UserInputType ~= Enum.UserInputType.Keyboard then
+									return
+								end
+								if input.KeyCode == Enum.KeyCode.Escape then
+									setkblistening(false)
+									return
+								end
+								setkblistening(false)
+								if input.KeyCode == Enum.KeyCode.Backspace then
+									applykb(Enum.KeyCode.Unknown, true)
+								else
+									applykb(input.KeyCode, true)
+								end
+								return
+							end
+							if gpe or islocked or kbvalue == Enum.KeyCode.Unknown then
+								return
+							end
+							if input.UserInputType ~= Enum.UserInputType.Keyboard or input.KeyCode ~= kbvalue then
+								return
+							end
+							if shared.cancel or os.clock() < shared.blockuntil then
+								return
+							end
+							togglefunc:Set(not togglefunc.Value)
+						end),
+						"togglekeybind." .. kbkey
+					)
+
+					-- registered as its own config element so the key is saved, loaded and reset
+					-- together with the toggle (config:loadelements / config:reset walk this table)
+					function kbfunc:Set(value)
+						if islocked then
+							return
+						end
+						setkblistening(false)
+						applykb(value, true)
+					end
+					function kbfunc:LoadValue(value)
+						self:Set(value)
+					end
+					function kbfunc:ResetValue()
+						setkblistening(false)
+						applykb(kbdefault, false)
+					end
+					function kbfunc:GetValue()
+						return kbvalue
+					end
+					function kbfunc:IsLocked()
+						return islocked
+					end
+
+					local savedkey = config.data[kbkey]
+					applykb(savedkey ~= nil and savedkey or kbdefault, false)
+					config.elements[kbkey] = kbfunc
+				end
+
+				function togglefunc:SetKeybind(value)
+					if kbfunc.Set then
+						kbfunc:Set(value)
+					end
+				end
+
+				function togglefunc:GetKeybind()
+					return kbvalue
+				end
+
+				fittoggletitle()
+
 				local lock = nil
 				local basey = 46
 				local description = contenttext(toggleconfig)
 				if description then
 					toggletitle.Position = UDim2.new(0, 10, 0, 9)
-					local _, measure = attachcontent(toggle, description, 10, 26, 72)
+					local _, measure = attachcontent(toggle, description, 10, 26, function()
+						return 72 + kbinset()
+					end)
 					local function relayout()
 						basey = math.max(46, 26 + measure() + 10)
 						if lock and lock:IsLocked() then
@@ -7022,7 +7328,9 @@ function Chloex:Window(guiconfig)
 					end
 					relayout()
 					watchwidth(toggle, relayout)
+					relayoutdesc = relayout
 				end
+
 
 				local function render(value, instant)
 					elevate()
@@ -7115,16 +7423,20 @@ function Chloex:Window(guiconfig)
 				end
 
 				if lockable then
-					lock = makelock(toggle, { featureframe2 }, {
+					lock = makelock(toggle, keybtn and { featureframe2, keybtn } or { featureframe2 }, {
 						DonatorOnly = donatoronly,
 						GetBaseHeight = function()
 							return basey
 						end,
 						Pin = function(state)
 							featureframe2.Position = state and UDim2.new(1, -15, 0, basey / 2) or UDim2.new(1, -15, 0.5, 0)
+							if keybtn then
+								keybtn.Position = state and UDim2.new(1, -61, 0, basey / 2) or UDim2.new(1, -61, 0.5, 0)
+							end
 						end,
 						OnLock = function(silent)
 							islocked = true
+							setkblistening(false)
 							if togglefunc.Value then
 								apply(false, true, false, not silent)
 							end
@@ -7627,6 +7939,304 @@ function Chloex:Window(guiconfig)
 				config.elements[configkey] = inputfunc
 				registerSearchItem(inputconfig.Title, inputcontainer)
 				return inputfunc
+			end
+
+
+			-- Keybind row: click the button, press a key to bind it (Esc cancels, Backspace
+			-- clears). Callback(keycode) runs when the bound key is pressed; Changed(keycode)
+			-- runs when the binding changes (also once at build and on config load).
+			function items:AddKeybind(keybindconfig)
+				keybindconfig = keybindconfig or {}
+				keybindconfig.Title = keybindconfig.Title or keybindconfig.Name or "Keybind"
+				keybindconfig.Callback = keybindconfig.Callback or function() end
+				local changedcallback = keybindconfig.Changed or keybindconfig.ChangedCallback or keybindconfig.OnChanged
+
+				local hubdefault = Chloex:ParseKeyCode(keybindconfig.Default)
+
+				-- A touch device has no keyboard: hand back an inert element so scripts that
+				-- call :Set / :GetValue keep working, and draw nothing.
+				if isMobile then
+					local inert = { Value = hubdefault, DefaultValue = hubdefault }
+					function inert:Set() end
+					function inert:LoadValue() end
+					function inert:ResetValue() end
+					function inert:IsLocked()
+						return false
+					end
+					function inert:GetValue()
+						return hubdefault
+					end
+					return inert
+				end
+
+				local configkey = keyfor("Keybind_", keybindconfig)
+				local function savedpref()
+					local v = config.data[configkey]
+					if v ~= nil then
+						return Chloex:ParseKeyCode(v)
+					end
+					return hubdefault
+				end
+
+				local lockable = tabgated or isdonatorelement(keybindconfig)
+				local donatoronly = (tabgated and keygatedonator) or isdonatoronly(keybindconfig)
+				local islocked = lockable and not tierallows(donatoronly)
+				local keybindfunc = { Value = hubdefault, DefaultValue = hubdefault }
+
+				-- One record per window: which row is waiting for a key, and a short
+				-- cooldown so the key that finishes a rebind never also fires an action.
+				guifunc.Keybinds = guifunc.Keybinds or { cancel = nil, blockuntil = 0 }
+				local shared = guifunc.Keybinds
+
+				local keyrow = instance.frame(sectionadd)
+				keyrow.Name = "Keybind"
+				keyrow.BorderSizePixel = 0
+				keyrow.LayoutOrder = countitem
+				keyrow.Size = UDim2.new(1, 0, 0, 46)
+				local rowbg = roundbg(keyrow, 4, theme.Row)
+
+				local keybtn = instance.textbutton(keyrow)
+				keybtn.Name = "KeyBtn"
+				keybtn.FontFace = FONT_BOLD
+				keybtn.AutoButtonColor = false
+				keybtn.AnchorPoint = Vector2.new(1, 0.5)
+				keybtn.Position = UDim2.new(1, -10, 0.5, 0)
+				keybtn.Size = UDim2.new(0, 56, 0, 26)
+				keybtn.AutomaticSize = Enum.AutomaticSize.X
+				keybtn.BackgroundColor3 = theme.Field
+				keybtn.BackgroundTransparency = 0
+				keybtn.BorderSizePixel = 0
+				keybtn.TextSize = ts(12)
+				keybtn.TextColor3 = theme.Dim
+				keybtn.TextTruncate = Enum.TextTruncate.AtEnd
+				keybtn.Text = "None"
+				instance.uicorner(keybtn).CornerRadius = UDim.new(0, 4)
+				local keypadding = instance.uipadding(keybtn)
+				keypadding.PaddingLeft = UDim.new(0, 8)
+				keypadding.PaddingRight = UDim.new(0, 8)
+				local keymax = instance.uisizeconstraint(keybtn)
+				keymax.MaxSize = Vector2.new(110, 26)
+				local keystroke = instance.uistroke(keybtn)
+				keystroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+				keystroke.Color = Color3.fromRGB(255, 255, 255)
+				keystroke.Thickness = 1
+				keystroke.Transparency = 0.9
+
+				local keytitle = instance.textlabel(keyrow)
+				keytitle.FontFace = FONT_BOLD
+				keytitle.Text = keybindconfig.Title
+				keytitle.TextSize = ts(13) + 1
+				keytitle.TextColor3 = theme.Text
+				keytitle.TextTruncate = Enum.TextTruncate.AtEnd
+				keytitle.TextXAlignment = Enum.TextXAlignment.Left
+				keytitle.BackgroundTransparency = 1
+				keytitle.AnchorPoint = Vector2.new(0, 0.5)
+				keytitle.Position = UDim2.new(0, 10, 0.5, 0)
+
+				-- the title leaves room for the button, which grows with long key names
+				local function fittitle()
+					keytitle.Size = UDim2.new(1, -(math.max(56, keybtn.AbsoluteSize.X) + 22), 0, 16)
+				end
+				fittitle()
+				keybtn:GetPropertyChangedSignal("AbsoluteSize"):Connect(fittitle)
+
+				keyrow.MouseEnter:Connect(function()
+					if not islocked then
+						rowbg.ImageColor3 = theme.ElementHover
+					end
+				end)
+				keyrow.MouseLeave:Connect(function()
+					rowbg.ImageColor3 = theme.Row
+				end)
+
+				local lock = nil
+				local basey = 46
+				local description = contenttext(keybindconfig)
+				if description then
+					keytitle.AnchorPoint = Vector2.new(0, 0)
+					keytitle.Position = UDim2.new(0, 10, 0, 9)
+					local _, measure = attachcontent(keyrow, description, 10, 26, function()
+						return math.max(56, keybtn.AbsoluteSize.X) + 22
+					end)
+					local function relayout()
+						basey = math.max(46, 26 + measure() + 10)
+						if lock and lock:IsLocked() then
+							lock:Relayout()
+						else
+							keyrow.Size = UDim2.new(1, 0, 0, basey)
+						end
+					end
+					relayout()
+					watchwidth(keyrow, relayout)
+				end
+
+				local listening = false
+
+				local function renderkey(instant)
+					elevate()
+					local textcolor, strokecolor, stroketransparency
+					if listening then
+						keybtn.Text = "..."
+						textcolor = guiconfig.Color
+						strokecolor = guiconfig.Color
+						stroketransparency = 0
+					else
+						keybtn.Text = Chloex:KeyCodeLabel(keybindfunc.Value)
+						textcolor = keybindfunc.Value ~= Enum.KeyCode.Unknown and theme.Text or theme.Dim
+						strokecolor = Color3.fromRGB(255, 255, 255)
+						stroketransparency = 0.9
+					end
+					if instant then
+						keybtn.TextColor3 = textcolor
+						keystroke.Color = strokecolor
+						keystroke.Transparency = stroketransparency
+					else
+						sv.ts:Create(keybtn, TweenInfo.new(0.15), { TextColor3 = textcolor }):Play()
+						sv.ts:Create(keystroke, TweenInfo.new(0.15), { Color = strokecolor, Transparency = stroketransparency }):Play()
+					end
+				end
+
+				local setlistening
+				local function stoplistening()
+					setlistening(false)
+				end
+				function setlistening(state)
+					if state == listening then
+						return
+					end
+					listening = state
+					if state then
+						if shared.cancel and shared.cancel ~= stoplistening then
+							shared.cancel()
+						end
+						shared.cancel = stoplistening
+					else
+						if shared.cancel == stoplistening then
+							shared.cancel = nil
+						end
+						shared.blockuntil = os.clock() + 0.25
+					end
+					renderkey()
+				end
+
+				local function apply(value, save, fire)
+					elevate()
+					value = Chloex:ParseKeyCode(value)
+					keybindfunc.Value = value
+					if save then
+						config.data[configkey] = value == Enum.KeyCode.Unknown and "None" or value.Name
+						config:queuesave()
+					end
+					renderkey(true)
+					if fire and typeof(changedcallback) == "function" then
+						elevate()
+						local ok, err = pcall(changedcallback, value)
+						if not ok then
+							warn("Keybind Changed callback error:", err)
+						end
+					end
+				end
+
+				function keybindfunc:Set(value)
+					if islocked then
+						return
+					end
+					setlistening(false)
+					apply(value, true, true)
+				end
+
+				function keybindfunc:LoadValue(value)
+					self:Set(value)
+				end
+
+				function keybindfunc:ResetValue()
+					self:Set(hubdefault)
+				end
+
+				function keybindfunc:GetValue()
+					return keybindfunc.Value
+				end
+
+				function keybindfunc:IsLocked()
+					return islocked
+				end
+
+				keybtn.Activated:Connect(function()
+					if islocked then
+						return
+					end
+					setlistening(not listening)
+				end)
+
+				trackConnection(
+					sv.uis.InputBegan:Connect(function(input, gpe)
+						if listening then
+							if input.UserInputType ~= Enum.UserInputType.Keyboard then
+								return
+							end
+							if input.KeyCode == Enum.KeyCode.Escape then
+								setlistening(false)
+								return
+							end
+							setlistening(false)
+							if input.KeyCode == Enum.KeyCode.Backspace then
+								apply(Enum.KeyCode.Unknown, true, true)
+							else
+								apply(input.KeyCode, true, true)
+							end
+							return
+						end
+						if gpe or islocked or keybindfunc.Value == Enum.KeyCode.Unknown then
+							return
+						end
+						if input.UserInputType ~= Enum.UserInputType.Keyboard or input.KeyCode ~= keybindfunc.Value then
+							return
+						end
+						if shared.cancel or os.clock() < shared.blockuntil then
+							return
+						end
+						elevate()
+						local ok, err = pcall(keybindconfig.Callback, keybindfunc.Value)
+						if not ok then
+							warn("Keybind Callback error:", err)
+						end
+					end),
+					"keybind." .. configkey
+				)
+
+				if islocked then
+					apply(hubdefault, false, false)
+				else
+					apply(savedpref(), true, true)
+				end
+
+				if lockable then
+					lock = makelock(keyrow, { keybtn }, {
+						DonatorOnly = donatoronly,
+						GetBaseHeight = function()
+							return basey
+						end,
+						Pin = function(state)
+							keybtn.Position = state and UDim2.new(1, -10, 0, basey / 2) or UDim2.new(1, -10, 0.5, 0)
+							if not description then
+								keytitle.Position = state and UDim2.new(0, 10, 0, basey / 2) or UDim2.new(0, 10, 0.5, 0)
+							end
+						end,
+						OnLock = function()
+							islocked = true
+							setlistening(false)
+						end,
+						OnUnlock = function()
+							islocked = false
+						end,
+					}, islocked)
+				end
+
+				countitem = countitem + 1
+				yieldbuild()
+				config.elements[configkey] = keybindfunc
+				registerSearchItem(keybindconfig.Title, keyrow)
+				return keybindfunc
 			end
 
 			function items:AddDropdown(dropdownconfig)
