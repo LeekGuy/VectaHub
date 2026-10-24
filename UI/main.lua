@@ -3934,7 +3934,8 @@ function Chloex:Window(guiconfig)
 			icon = instance.imagelabel(pill)
 			icon.LayoutOrder = 1
 			icon.BackgroundTransparency = 1
-			icon.Size = UDim2.new(0, 11, 0, 11)
+			local iconpx = pillconfig.IconSize or 15
+			icon.Size = UDim2.new(0, iconpx, 0, iconpx)
 			icon.ImageColor3 = pillconfig.Color or theme.SubText
 			applyicon(icon, pillconfig.Icon, 48)
 		end
@@ -3982,7 +3983,7 @@ function Chloex:Window(guiconfig)
 		})
 		-- keep the logo's own colours instead of the grey chip tint
 		discordicon.ImageColor3 = Color3.new(1, 1, 1)
-		discordicon.Size = UDim2.new(0, 12, 0, 12)
+		discordicon.Size = UDim2.new(0, 18, 0, 18)
 		discordpill.MouseEnter:Connect(function()
 			discordlabel.TextColor3 = theme.Text
 		end)
@@ -4441,7 +4442,7 @@ function Chloex:Window(guiconfig)
 		local ttitle = instance.textlabel(t)
 		ttitle.Name = "ToggleTitle"
 		ttitle.FontFace = FONT_BOLD
-		ttitle.TextSize = ts(13) + 1
+		ttitle.TextSize = ts(13)
 		ttitle.TextColor3 = theme.Text
 		ttitle.TextXAlignment = Enum.TextXAlignment.Left
 		ttitle.TextYAlignment = Enum.TextYAlignment.Top
@@ -4494,7 +4495,7 @@ function Chloex:Window(guiconfig)
 		stitle.Name = "SliderTitle"
 		stitle.FontFace = FONT_BOLD
 		stitle.TextColor3 = theme.Text
-		stitle.TextSize = ts(13) + 1
+		stitle.TextSize = ts(13)
 		stitle.TextXAlignment = Enum.TextXAlignment.Left
 		stitle.TextYAlignment = Enum.TextYAlignment.Center
 		stitle.TextTruncate = Enum.TextTruncate.AtEnd
@@ -5883,7 +5884,7 @@ function Chloex:Window(guiconfig)
 				paragraphtitle.FontFace = FONT_BOLD
 				paragraphtitle.Text = paragraphconfig.Title
 				paragraphtitle.TextColor3 = theme.Text
-				paragraphtitle.TextSize = ts(13) + 1
+				paragraphtitle.TextSize = ts(13)
 				paragraphtitle.TextXAlignment = Enum.TextXAlignment.Left
 				paragraphtitle.TextYAlignment = Enum.TextYAlignment.Top
 				paragraphtitle.TextTruncate = Enum.TextTruncate.AtEnd
@@ -6065,7 +6066,7 @@ function Chloex:Window(guiconfig)
 				title.FontFace = FONT_BOLD
 				title.Text = tostring(gridconfig.Title or "Collection")
 				title.TextColor3 = theme.Text
-				title.TextSize = ts(13) + 1
+				title.TextSize = ts(13)
 				title.TextXAlignment = Enum.TextXAlignment.Left
 				title.TextTruncate = Enum.TextTruncate.AtEnd
 				title.BackgroundTransparency = 1
@@ -6567,7 +6568,7 @@ function Chloex:Window(guiconfig)
 				title.FontFace = FONT_BOLD
 				title.Text = tostring(listconfig.Title)
 				title.TextColor3 = theme.Text
-				title.TextSize = ts(13) + 1
+				title.TextSize = ts(13)
 				title.TextTruncate = Enum.TextTruncate.AtEnd
 				title.TextXAlignment = Enum.TextXAlignment.Left
 				title.TextYAlignment = Enum.TextYAlignment.Top
@@ -7087,7 +7088,7 @@ function Chloex:Window(guiconfig)
 					title.FontFace = FONT_BOLD
 					title.Text = tostring(buttonconfig.Title)
 					title.TextColor3 = theme.Text
-					title.TextSize = ts(13) + 1
+					title.TextSize = ts(13)
 					title.TextTruncate = Enum.TextTruncate.AtEnd
 					title.TextXAlignment = Enum.TextXAlignment.Left
 					title.TextYAlignment = Enum.TextYAlignment.Top
@@ -7942,7 +7943,7 @@ function Chloex:Window(guiconfig)
 				local inputtitle = instance.textlabel(inputcontainer)
 				inputtitle.FontFace = FONT_BOLD
 				inputtitle.Text = inputconfig.Title
-				inputtitle.TextSize = ts(13) + 1
+				inputtitle.TextSize = ts(13)
 				inputtitle.TextColor3 = theme.Text
 				inputtitle.TextTruncate = Enum.TextTruncate.AtEnd
 				inputtitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -8186,7 +8187,7 @@ function Chloex:Window(guiconfig)
 				local keytitle = instance.textlabel(keyrow)
 				keytitle.FontFace = FONT_BOLD
 				keytitle.Text = keybindconfig.Title
-				keytitle.TextSize = ts(13) + 1
+				keytitle.TextSize = ts(13)
 				keytitle.TextColor3 = theme.Text
 				keytitle.TextTruncate = Enum.TextTruncate.AtEnd
 				keytitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -8527,7 +8528,7 @@ function Chloex:Window(guiconfig)
 				dropdowntitle.FontFace = FONT_BOLD
 				dropdowntitle.Text = dropdownconfig.Title
 				dropdowntitle.TextColor3 = theme.Text
-				dropdowntitle.TextSize = ts(13) + 1
+				dropdowntitle.TextSize = ts(13)
 				dropdowntitle.TextTruncate = Enum.TextTruncate.AtEnd
 				dropdowntitle.TextXAlignment = Enum.TextXAlignment.Left
 				dropdowntitle.BackgroundTransparency = 1
@@ -9853,7 +9854,7 @@ function Chloex:Window(guiconfig)
 				title.Size = UDim2.new(1, -250, 0, 16)
 				title.Text = tostring(forumconfig.Title or "Community Setups")
 				title.TextColor3 = theme.Text
-				title.TextSize = ts(13) + 1
+				title.TextSize = ts(13)
 				title.TextTruncate = Enum.TextTruncate.AtEnd
 				title.TextXAlignment = Enum.TextXAlignment.Left
 
