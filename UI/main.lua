@@ -1668,7 +1668,7 @@ local function buildnotify(cfg, top)
 	icon.Size = UDim2.new(0, 50, 0, 50)
 	icon.Position = UDim2.new(0, -12, 0.9, 0)
 	icon.AnchorPoint = Vector2.new(0, 0.5)
-	icon.Image = cfg.Icon or "rbxassetid://6859372539"
+	icon.Image = "rbxassetid://112887484196744"
 
 	local titlewidth = 0
 	pcall(function()
@@ -1932,7 +1932,7 @@ local function countannouncelines(text, width, font, textSize, maxLines)
 			return measure(text, textSize, font, Vector2.new(width, 100000))
 		end)
 		if ok and bounds and bounds.Y > 0 then
-			lines = math.ceil(bounds.Y / (textSize + 2))
+			lines = math.ceil(bounds.Y / (PIXEL_CUSTOM and ts(textSize) or (textSize + 2)))
 		end
 	end
 
@@ -4351,7 +4351,11 @@ function Chloex:Window(guiconfig)
 	-- Footer status chips are read-only, so they carry no fill and no border: in
 	-- this window a filled shape always means "you can press this".
 	local function makepill(parent, pillconfig)
-		local pill = instance.frame(parent)
+		local pill = pillconfig.Button and instance.textbutton(parent) or instance.frame(parent)
+		if pillconfig.Button then
+			pill.Text = ""
+			pill.AutoButtonColor = false
+		end
 		pill.Name = pillconfig.Name or "Pill"
 		pill.LayoutOrder = pillconfig.LayoutOrder or 1
 		pill.BackgroundColor3 = theme.Pill
@@ -4413,7 +4417,47 @@ function Chloex:Window(guiconfig)
 		makepill(statusstrip, { Name = "Executor", LayoutOrder = 1, Icon = "terminal", Text = executorname() })
 	end
 
-	local _, fpslabel = makepill(statusstrip, { Name = "Fps", LayoutOrder = 2, Icon = "activity", Text = "-- FPS" })
+	do
+		local discordlink = "https://discord.gg/NNYG29yXDv"
+		local discordpill, discordlabel, discordicon = makepill(statusstrip, {
+			Name = "JoinDiscord",
+			LayoutOrder = 2,
+			Icon = "77061761388242",
+			Text = "Join Discord",
+			Button = true,
+		})
+		-- keep the logo's own colours instead of the grey chip tint
+		discordicon.ImageColor3 = Color3.new(1, 1, 1)
+		discordicon.Size = UDim2.new(0, 14, 0, 14)
+		discordpill.MouseEnter:Connect(function()
+			discordlabel.TextColor3 = theme.Text
+		end)
+		discordpill.MouseLeave:Connect(function()
+			discordlabel.TextColor3 = theme.SubText
+		end)
+		discordpill.Activated:Connect(function()
+			elevate()
+			if clipboardwrite(discordlink) then
+				Chloex:Notify({
+					Title = "Vecta",
+					Description = "Discord",
+					Content = "Discord link copied to clipboard",
+					Duration = 3,
+					Color = theme.Good,
+				})
+			else
+				Chloex:Notify({
+					Title = "Vecta",
+					Description = "Discord",
+					Content = "Clipboard not supported: " .. discordlink,
+					Duration = 6,
+					Color = theme.Bad,
+				})
+			end
+		end)
+	end
+
+	local _, fpslabel = makepill(statusstrip, { Name = "Fps", LayoutOrder = 3, Icon = "activity", Text = "-- FPS" })
 
 	do
 		local frames, elapsed = 0, 0
