@@ -8104,6 +8104,530 @@ function Chloex:Window(guiconfig)
 			end
 
 
+			-- Color picker row: swatch button opens a modal (SV box + hue slider +
+			-- hex / RGB fields, Apply / Cancel). Value is a Color3, saved as {R,G,B}.
+			-- Ported from BolongUI. Callback(color) runs on Apply, on Set and at build.
+			function items:AddColorPicker(colorconfig)
+				colorconfig = colorconfig or {}
+				colorconfig.Title = colorconfig.Title or colorconfig.Name or "Color"
+				colorconfig.Callback = colorconfig.Callback or function() end
+
+				local function tocolor(v, fallback)
+					if typeof(v) == "Color3" then
+						return v
+					elseif type(v) == "table" then
+						return Color3.fromRGB(
+							math.clamp(tonumber(v.R or v.r or v[1]) or 255, 0, 255),
+							math.clamp(tonumber(v.G or v.g or v[2]) or 255, 0, 255),
+							math.clamp(tonumber(v.B or v.b or v[3]) or 255, 0, 255)
+						)
+					elseif type(v) == "string" then
+						local hex = v:gsub("#", ""):gsub("%s", "")
+						if #hex == 6 and hex:match("^%x+$") then
+							return Color3.fromRGB(
+								tonumber(hex:sub(1, 2), 16),
+								tonumber(hex:sub(3, 4), 16),
+								tonumber(hex:sub(5, 6), 16)
+							)
+						end
+					end
+					return fallback
+				end
+				local function pack(c)
+					return {
+						R = math.floor(c.R * 255 + 0.5),
+						G = math.floor(c.G * 255 + 0.5),
+						B = math.floor(c.B * 255 + 0.5),
+					}
+				end
+
+				local configkey = keyfor("ColorPicker_", colorconfig)
+				local hubdefault = tocolor(colorconfig.Default, Color3.fromRGB(255, 255, 255))
+				local function savedpref()
+					local v = config.data[configkey]
+					if v ~= nil then
+						return tocolor(v, hubdefault)
+					end
+					return hubdefault
+				end
+
+				local lockable = tabgated or isdonatorelement(colorconfig)
+				local donatoronly = (tabgated and keygatedonator) or isdonatoronly(colorconfig)
+				local islocked = lockable and not tierallows(donatoronly)
+				local colorfunc = { Value = islocked and hubdefault or savedpref(), DefaultValue = hubdefault }
+
+				local colorcontainer = instance.frame(sectionadd)
+				colorcontainer.BorderSizePixel = 0
+				colorcontainer.LayoutOrder = countitem
+				colorcontainer.Size = UDim2.new(1, 0, 0, 46)
+				roundbg(colorcontainer, 4, theme.Row)
+
+				local colortitle = instance.textlabel(colorcontainer)
+				colortitle.FontFace = FONT_BOLD
+				colortitle.Text = colorconfig.Title
+				colortitle.TextSize = ts(13)
+				colortitle.TextColor3 = theme.Text
+				colortitle.TextTruncate = Enum.TextTruncate.AtEnd
+				colortitle.TextXAlignment = Enum.TextXAlignment.Left
+				colortitle.BackgroundTransparency = 1
+				colortitle.Position = UDim2.new(0, 10, 0, 16)
+				colortitle.Size = UDim2.new(1, -60, 0, 14)
+
+				local swatch = instance.textbutton(colorcontainer)
+				swatch.Text = ""
+				swatch.AutoButtonColor = false
+				swatch.AnchorPoint = Vector2.new(1, 0)
+				swatch.Position = UDim2.new(1, -10, 0, 14)
+				swatch.Size = UDim2.new(0, 30, 0, 18)
+				swatch.BackgroundTransparency = 0
+				swatch.BackgroundColor3 = colorfunc.Value
+				swatch.BorderSizePixel = 0
+				instance.uicorner(swatch).CornerRadius = UDim.new(0, 4)
+				local swatchstroke = instance.uistroke(swatch)
+				swatchstroke.Color = theme.Stroke
+				swatchstroke.Thickness = 1
+				swatchstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+				local lock = nil
+				local basey = 46
+				local description = contenttext(colorconfig)
+				if description then
+					local _, measure = attachcontent(colorcontainer, description, 10, 24, 50)
+					local function relayout()
+						colortitle.Position = UDim2.new(0, 10, 0, 8)
+						swatch.Position = UDim2.new(1, -10, 0, 8)
+						basey = math.max(46, 24 + measure() + 8)
+						if lock and lock:IsLocked() then
+							lock:Relayout()
+						else
+							colorcontainer.Size = UDim2.new(1, 0, 0, basey)
+						end
+					end
+					relayout()
+					watchwidth(colorcontainer, relayout)
+				end
+
+				local function applycolor(color, fire, save)
+					elevate()
+					colorfunc.Value = color
+					swatch.BackgroundColor3 = color
+					if save then
+						config.data[configkey] = pack(color)
+						config:queuesave()
+					end
+					if fire and typeof(colorconfig.Callback) == "function" then
+						local ok, err = pcall(colorconfig.Callback, color)
+						if not ok then
+							warn("ColorPicker Callback error:", err)
+						end
+					end
+				end
+
+				function colorfunc:Set(color)
+					if islocked then
+						return
+					end
+					applycolor(tocolor(color, colorfunc.Value), true, true)
+				end
+
+				function colorfunc:LoadValue(value)
+					self:Set(value)
+				end
+
+				function colorfunc:ResetValue()
+					self:Set(hubdefault)
+				end
+
+				function colorfunc:GetValue()
+					return colorfunc.Value
+				end
+
+				local function openpalette()
+					if islocked or dropshadowholder:FindFirstChild("ColorOverlay") then
+						return
+					end
+					local edith, edits, editv = colorfunc.Value:ToHSV()
+					local editcolor = colorfunc.Value
+					local svdragging, huedragging = false, false
+					local conns = {}
+
+					local overlay = instance.frame(dropshadowholder)
+					overlay.Name = "ColorOverlay"
+					overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					overlay.BackgroundTransparency = 0.45
+					overlay.BorderSizePixel = 0
+					overlay.Size = UDim2.new(1, 0, 1, 0)
+					overlay.ZIndex = 60
+					pcall(function()
+						instance.uicorner(overlay).CornerRadius = UDim.new(0, 8)
+					end)
+
+					local overlayclose = instance.textbutton(overlay)
+					overlayclose.Text = ""
+					overlayclose.BackgroundTransparency = 1
+					overlayclose.Size = UDim2.new(1, 0, 1, 0)
+					overlayclose.ZIndex = 60
+
+					local dw, dh = 262, 236
+					local dialog = instance.frame(overlay)
+					dialog.AnchorPoint = Vector2.new(0.5, 0.5)
+					dialog.Position = UDim2.new(0.5, 0, 0.5, 0)
+					dialog.Size = UDim2.new(0, dw, 0, dh)
+					dialog.BackgroundColor3 = theme.Card
+					dialog.BackgroundTransparency = 0
+					dialog.BorderSizePixel = 0
+					dialog.ZIndex = 61
+					instance.uicorner(dialog).CornerRadius = UDim.new(0, 8)
+					local dstroke = instance.uistroke(dialog)
+					dstroke.Color = theme.Stroke
+					dstroke.Thickness = 1
+
+					-- shrink the dialog when the window is smaller than it
+					local dscale = Instance.new("UIScale")
+					dscale.Parent = dialog
+					local function fit()
+						local h = overlay.AbsoluteSize.Y
+						local w = overlay.AbsoluteSize.X
+						if h > 1 and w > 1 then
+							dscale.Scale = math.clamp(math.min((h - 12) / dh, (w - 12) / dw), 0.5, 1)
+						end
+					end
+					fit()
+					table.insert(conns, overlay:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit))
+
+					local dtitle = instance.textlabel(dialog)
+					dtitle.FontFace = FONT_BOLD
+					dtitle.Text = colorconfig.Title
+					dtitle.TextSize = ts(13)
+					dtitle.TextColor3 = theme.Text
+					dtitle.TextTruncate = Enum.TextTruncate.AtEnd
+					dtitle.TextXAlignment = Enum.TextXAlignment.Left
+					dtitle.BackgroundTransparency = 1
+					dtitle.Position = UDim2.new(0, 12, 0, 8)
+					dtitle.Size = UDim2.new(1, -24, 0, 16)
+					dtitle.ZIndex = 62
+
+					local svbox = instance.frame(dialog)
+					svbox.BackgroundTransparency = 0
+					svbox.BackgroundColor3 = Color3.fromHSV(edith, 1, 1)
+					svbox.BorderSizePixel = 0
+					svbox.Position = UDim2.new(0, 12, 0, 30)
+					svbox.Size = UDim2.new(0, 196, 0, 100)
+					svbox.ZIndex = 62
+					instance.uicorner(svbox).CornerRadius = UDim.new(0, 6)
+
+					local white = instance.frame(svbox)
+					white.BackgroundTransparency = 0
+					white.BackgroundColor3 = Color3.new(1, 1, 1)
+					white.BorderSizePixel = 0
+					white.Size = UDim2.new(1, 0, 1, 0)
+					white.ZIndex = 62
+					instance.uicorner(white).CornerRadius = UDim.new(0, 6)
+					local wg = instance.uigradient(white)
+					wg.Transparency = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 0),
+						NumberSequenceKeypoint.new(1, 1),
+					})
+
+					local black = instance.frame(svbox)
+					black.BackgroundTransparency = 0
+					black.BackgroundColor3 = Color3.new(0, 0, 0)
+					black.BorderSizePixel = 0
+					black.Size = UDim2.new(1, 0, 1, 0)
+					black.ZIndex = 62
+					instance.uicorner(black).CornerRadius = UDim.new(0, 6)
+					local bg = instance.uigradient(black)
+					bg.Rotation = 90
+					bg.Transparency = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 1),
+						NumberSequenceKeypoint.new(1, 0),
+					})
+
+					local svcursor = instance.frame(svbox)
+					svcursor.AnchorPoint = Vector2.new(0.5, 0.5)
+					svcursor.BackgroundTransparency = 0
+					svcursor.BackgroundColor3 = Color3.new(1, 1, 1)
+					svcursor.BorderSizePixel = 0
+					svcursor.Size = UDim2.new(0, 12, 0, 12)
+					svcursor.ZIndex = 63
+					instance.uicorner(svcursor).CornerRadius = UDim.new(1, 0)
+					local svcs = instance.uistroke(svcursor)
+					svcs.Color = guiconfig.Color
+					svcs.Thickness = 2
+
+					local svhit = instance.textbutton(svbox)
+					svhit.Text = ""
+					svhit.BackgroundTransparency = 1
+					svhit.Size = UDim2.new(1, 0, 1, 0)
+					svhit.ZIndex = 64
+
+					local hueslider = instance.frame(dialog)
+					hueslider.BackgroundTransparency = 0
+					hueslider.BackgroundColor3 = Color3.new(1, 1, 1)
+					hueslider.BorderSizePixel = 0
+					hueslider.Position = UDim2.new(0, 220, 0, 30)
+					hueslider.Size = UDim2.new(0, 18, 0, 100)
+					hueslider.ZIndex = 62
+					instance.uicorner(hueslider).CornerRadius = UDim.new(0, 9)
+					local hg = instance.uigradient(hueslider)
+					hg.Rotation = 90
+					hg.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+						ColorSequenceKeypoint.new(1 / 6, Color3.fromRGB(255, 255, 0)),
+						ColorSequenceKeypoint.new(2 / 6, Color3.fromRGB(0, 255, 0)),
+						ColorSequenceKeypoint.new(3 / 6, Color3.fromRGB(0, 255, 255)),
+						ColorSequenceKeypoint.new(4 / 6, Color3.fromRGB(0, 0, 255)),
+						ColorSequenceKeypoint.new(5 / 6, Color3.fromRGB(255, 0, 255)),
+						ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
+					})
+
+					local huecursor = instance.frame(hueslider)
+					huecursor.AnchorPoint = Vector2.new(0.5, 0.5)
+					huecursor.BackgroundTransparency = 0
+					huecursor.BackgroundColor3 = Color3.new(1, 1, 1)
+					huecursor.BorderSizePixel = 0
+					huecursor.Size = UDim2.new(0, 24, 0, 8)
+					huecursor.ZIndex = 63
+					instance.uicorner(huecursor).CornerRadius = UDim.new(1, 0)
+					local hcs = instance.uistroke(huecursor)
+					hcs.Color = Color3.fromRGB(20, 20, 20)
+					hcs.Thickness = 2
+
+					local huehit = instance.textbutton(hueslider)
+					huehit.Text = ""
+					huehit.BackgroundTransparency = 1
+					huehit.Size = UDim2.new(1, 0, 1, 0)
+					huehit.ZIndex = 64
+
+					local function makefield(x, y, w, label)
+						local field = instance.frame(dialog)
+						field.BackgroundTransparency = 0
+						field.BackgroundColor3 = theme.Field
+						field.BorderSizePixel = 0
+						field.Position = UDim2.new(0, x, 0, y)
+						field.Size = UDim2.new(0, w, 0, 24)
+						field.ZIndex = 62
+						instance.uicorner(field).CornerRadius = UDim.new(0, 4)
+
+						local box = instance.textbox(field)
+						box.FontFace = FONT_MEDIUM
+						box.Text = ""
+						box.TextSize = ts(12)
+						box.TextColor3 = theme.Text
+						box.TextXAlignment = Enum.TextXAlignment.Left
+						box.ClearTextOnFocus = false
+						box.BackgroundTransparency = 1
+						box.Position = UDim2.new(0, 8, 0, 0)
+						box.Size = UDim2.new(0.62, -8, 1, 0)
+						box.ZIndex = 63
+
+						local lab = instance.textlabel(field)
+						lab.FontFace = FONT_MEDIUM
+						lab.Text = label
+						lab.TextSize = ts(11)
+						lab.TextColor3 = theme.Dim
+						lab.TextXAlignment = Enum.TextXAlignment.Right
+						lab.BackgroundTransparency = 1
+						lab.Position = UDim2.new(0.62, 0, 0, 0)
+						lab.Size = UDim2.new(0.38, -8, 1, 0)
+						lab.ZIndex = 63
+						return box
+					end
+
+					local preview = instance.frame(dialog)
+					preview.BackgroundTransparency = 0
+					preview.BackgroundColor3 = editcolor
+					preview.BorderSizePixel = 0
+					preview.Position = UDim2.new(0, 12, 0, 138)
+					preview.Size = UDim2.new(0, 24, 0, 24)
+					preview.ZIndex = 62
+					instance.uicorner(preview).CornerRadius = UDim.new(0, 4)
+					local pstroke = instance.uistroke(preview)
+					pstroke.Color = theme.Stroke
+					pstroke.Thickness = 1
+
+					local hexbox = makefield(42, 138, 196, "Hex")
+					local rbox = makefield(12, 168, 74, "R")
+					local gbox = makefield(94, 168, 74, "G")
+					local bbox = makefield(176, 168, 62, "B")
+
+					local function makebutton(x, text, primary)
+						local btn = instance.textbutton(dialog)
+						btn.FontFace = FONT_BOLD
+						btn.Text = text
+						btn.TextSize = ts(12)
+						btn.AutoButtonColor = false
+						btn.TextColor3 = primary and theme.AccentText or theme.SubText
+						btn.Position = UDim2.new(0, x, 0, 200)
+						btn.Size = UDim2.new(0, 118, 0, 28)
+						btn.ZIndex = 62
+						local normal = primary and guiconfig.Color or theme.Inner
+						local hover = primary and guiconfig.Color:Lerp(Color3.new(1, 1, 1), 0.12) or theme.InnerHover
+						btn.BackgroundTransparency = 0
+						btn.BackgroundColor3 = normal
+						btn.BorderSizePixel = 0
+						instance.uicorner(btn).CornerRadius = UDim.new(0, 4)
+						btn.MouseEnter:Connect(function()
+							btn.BackgroundColor3 = hover
+						end)
+						btn.MouseLeave:Connect(function()
+							btn.BackgroundColor3 = normal
+						end)
+						return btn
+					end
+					local cancelbtn = makebutton(12, "Cancel", false)
+					local applybtn = makebutton(132, "Apply", true)
+
+					local updating = false
+					local function refresh()
+						editcolor = Color3.fromHSV(edith, edits, editv)
+						svbox.BackgroundColor3 = Color3.fromHSV(edith, 1, 1)
+						svcursor.Position = UDim2.new(edits, 0, 1 - editv, 0)
+						huecursor.Position = UDim2.new(0.5, 0, edith, 0)
+						preview.BackgroundColor3 = editcolor
+						local r = math.floor(editcolor.R * 255 + 0.5)
+						local g = math.floor(editcolor.G * 255 + 0.5)
+						local b = math.floor(editcolor.B * 255 + 0.5)
+						updating = true
+						hexbox.Text = string.format("#%02X%02X%02X", r, g, b)
+						rbox.Text = tostring(r)
+						gbox.Text = tostring(g)
+						bbox.Text = tostring(b)
+						updating = false
+					end
+
+					local function svfrom(pos)
+						edits = math.clamp((pos.X - svbox.AbsolutePosition.X) / math.max(svbox.AbsoluteSize.X, 1), 0, 1)
+						editv = 1 - math.clamp((pos.Y - svbox.AbsolutePosition.Y) / math.max(svbox.AbsoluteSize.Y, 1), 0, 1)
+						refresh()
+					end
+					local function huefrom(pos)
+						edith = math.clamp((pos.Y - hueslider.AbsolutePosition.Y) / math.max(hueslider.AbsoluteSize.Y, 1), 0, 1)
+						refresh()
+					end
+					local function ispointer(input)
+						return input.UserInputType == Enum.UserInputType.MouseButton1
+							or input.UserInputType == Enum.UserInputType.Touch
+					end
+
+					table.insert(conns, svhit.InputBegan:Connect(function(input)
+						if ispointer(input) then
+							svdragging = true
+							svfrom(input.Position)
+						end
+					end))
+					table.insert(conns, huehit.InputBegan:Connect(function(input)
+						if ispointer(input) then
+							huedragging = true
+							huefrom(input.Position)
+						end
+					end))
+					table.insert(conns, sv.uis.InputChanged:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseMovement
+							or input.UserInputType == Enum.UserInputType.Touch then
+							if svdragging then
+								svfrom(input.Position)
+							end
+							if huedragging then
+								huefrom(input.Position)
+							end
+						end
+					end))
+					table.insert(conns, sv.uis.InputEnded:Connect(function(input)
+						if ispointer(input) then
+							svdragging = false
+							huedragging = false
+						end
+					end))
+
+					hexbox.FocusLost:Connect(function()
+						if updating then
+							return
+						end
+						local c = tocolor(hexbox.Text, nil)
+						if c then
+							edith, edits, editv = c:ToHSV()
+						end
+						refresh()
+					end)
+					local function rgbedit()
+						if updating then
+							return
+						end
+						local function ch(box, cur)
+							return math.clamp(math.floor(tonumber(box.Text) or cur), 0, 255)
+						end
+						local r = ch(rbox, math.floor(editcolor.R * 255 + 0.5))
+						local g = ch(gbox, math.floor(editcolor.G * 255 + 0.5))
+						local b = ch(bbox, math.floor(editcolor.B * 255 + 0.5))
+						edith, edits, editv = Color3.fromRGB(r, g, b):ToHSV()
+						refresh()
+					end
+					rbox.FocusLost:Connect(rgbedit)
+					gbox.FocusLost:Connect(rgbedit)
+					bbox.FocusLost:Connect(rgbedit)
+
+					local function close()
+						for _, c in ipairs(conns) do
+							pcall(function()
+								c:Disconnect()
+							end)
+						end
+						overlay:Destroy()
+					end
+					cancelbtn.MouseButton1Click:Connect(close)
+					overlayclose.MouseButton1Click:Connect(close)
+					applybtn.MouseButton1Click:Connect(function()
+						if not islocked then
+							applycolor(editcolor, true, true)
+						end
+						close()
+					end)
+
+					for _, c in ipairs(conns) do
+						trackConnection(c, "ColorPicker")
+					end
+					refresh()
+				end
+
+				swatch.MouseButton1Click:Connect(openpalette)
+
+				if islocked then
+					applycolor(hubdefault, false, false)
+				else
+					applycolor(colorfunc.Value, true, true)
+				end
+
+				if lockable then
+					lock = makelock(colorcontainer, { swatch }, {
+						DonatorOnly = donatoronly,
+						GetBaseHeight = function()
+							return basey
+						end,
+						OnLock = function(silent)
+							islocked = true
+							if colorfunc.Value ~= hubdefault then
+								applycolor(hubdefault, not silent, false)
+							end
+						end,
+						OnUnlock = function()
+							islocked = false
+							applycolor(savedpref(), true, true)
+						end,
+					}, islocked)
+				end
+
+				function colorfunc:IsLocked()
+					return islocked
+				end
+
+				countitem = countitem + 1
+				yieldbuild()
+				config.elements[configkey] = colorfunc
+				registerSearchItem(colorconfig.Title, colorcontainer)
+				return colorfunc
+			end
+
 			-- Keybind row: click the button, press a key to bind it (Esc cancels, Backspace
 			-- clears). Callback(keycode) runs when the bound key is pressed; Changed(keycode)
 			-- runs when the binding changes (also once at build and on config load).
