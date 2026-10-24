@@ -3262,7 +3262,12 @@ function Chloex:Window(guiconfig)
 	local userPassedImage = guiconfig.Image
 	local userPassedToggle = guiconfig.ToggleImage or guiconfig.ToggleIcon or guiconfig.ButtonImage
 	guiconfig.Image = guiconfig.Image or "100997912316573"
-	guiconfig.ImageSize = tonumber(guiconfig.ImageSize) or 48
+	-- floating logo size in pixels: LogoSize, ToggleSize or ImageSize (first one set)
+	guiconfig.ImageSize = math.clamp(
+		math.floor(tonumber(guiconfig.LogoSize) or tonumber(guiconfig.ToggleSize) or tonumber(guiconfig.ImageSize) or 48),
+		16,
+		256
+	)
 	guiconfig.AutoConfigTab = guiconfig.AutoConfigTab ~= false
 	guiconfig.LazyConfigTab = guiconfig.LazyConfigTab ~= false
 	guiconfig.LoadUserThumbnail = guiconfig.LoadUserThumbnail ~= false
@@ -3831,7 +3836,7 @@ function Chloex:Window(guiconfig)
 
 	-- Footer status chips (Executor, FPS) are read-only, so they carry no fill and
 	-- no border. A pressable chip (Button = true, e.g. Join Discord) gets a fill and
-	-- a faint transparent border: in this window a filled shape always means "you
+	-- a fully transparent border: in this window a filled shape always means "you
 	-- can press this", and it keeps the button apart from the flat chips next to it.
 	local function makepill(parent, pillconfig)
 		local pill = pillconfig.Button and instance.textbutton(parent) or instance.frame(parent)
@@ -3853,9 +3858,8 @@ function Chloex:Window(guiconfig)
 			pillstroke.Name = "PillStroke"
 			pillstroke.Color = theme.Stroke
 			pillstroke.Thickness = 1
-			-- almost invisible: only a faint edge to keep the button apart from FPS
-			-- (1 = fully invisible, 0.5 = clearly visible)
-			pillstroke.Transparency = 0.75
+			-- fully transparent: the border only reserves the edge, it draws nothing
+			pillstroke.Transparency = 1
 			pillstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		end
 
@@ -4150,6 +4154,25 @@ function Chloex:Window(guiconfig)
 		"window.togglekey"
 	)
 
+	-- Resize the floating logo after the window exists. Works as
+	-- Window:SetLogoSize(64) and Window.SetLogoSize(64); returns the applied size.
+	function guifunc:SetLogoSize(size)
+		if type(self) ~= "table" then
+			size = self
+		end
+		size = tonumber(size)
+		if not size then
+			return guiconfig.ImageSize
+		end
+		size = math.clamp(math.floor(size), 16, 256)
+		guiconfig.ImageSize = size
+		local logo = guifunc.LogoButton
+		if logo and logo.Parent then
+			logo.Size = UDim2.new(0, size, 0, size)
+		end
+		return size
+	end
+
 	function guifunc:ToggleUI()
 		local screengui = instance.screengui(sv.coregui)
 		screengui.Name = "ToggleUIButton"
@@ -4159,6 +4182,7 @@ function Chloex:Window(guiconfig)
 		mainbutton.Size = UDim2.new(0, guiconfig.ImageSize, 0, guiconfig.ImageSize)
 		mainbutton.Position = UDim2.new(0, 20, 0, 100)
 		mainbutton.BackgroundTransparency = 1
+		guifunc.LogoButton = mainbutton
 		local toggleIcon = userPassedToggle or (not bgAsset and userPassedImage) or "100997912316573"
 		local toggleStr = tostring(toggleIcon):gsub("^%s+", ""):gsub("%s+$", "")
 		if toggleStr:match("^%d+$") then
@@ -4277,6 +4301,12 @@ function Chloex:Window(guiconfig)
 	guifunc:ToggleUI()
 
 	local tabs = {}
+	function tabs:SetLogoSize(size)
+		if type(self) ~= "table" or self ~= tabs then
+			size = self
+		end
+		return guifunc:SetLogoSize(size)
+	end
 	function tabs:SetHeaderChips(list)
 		list = type(list) == "table" and list or {}
 		for i, item in ipairs(list) do
