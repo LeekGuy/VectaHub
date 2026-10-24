@@ -4628,70 +4628,51 @@ function Chloex:Window(guiconfig)
 
 	makedraggable(top, dropshadowholder)
 
-	-- Window press-tilt. Roblox GUI has no real 3D perspective, so the "weight" at the
-	-- touch point is faked: while the mouse button / a finger is held on the window,
-	-- the window sinks toward that exact point (it scales about the point, which
-	-- stays under the finger), the side being pressed darkens and the raised side
-	-- catches light. The point is read every frame, so fast swipes are followed.
-	-- Hovering without pressing does nothing. Window options:
-	--   Tilt         = false  turns the whole effect off (default on)
-	--   TiltStrength = 0..2   how deep the press goes, default 1
-	--   TiltGlare    = false  drops the shading, light and edge highlight
-	--   TiltRotate   = 0..3   degrees of real rotation, default 0 (off). Roblox does
-	--                         not clip children properly inside a rotated frame,
-	--                         so keep this small or at 0.
-	if guiconfig.Tilt ~= false then
-		local strength = math.clamp(tonumber(guiconfig.TiltStrength) or 1, 0, 2)
-		local rotate = math.clamp(tonumber(guiconfig.TiltRotate) or 0, 0, 3)
+	-- Window edge glow. While the mouse button / a finger is held on the window, the
+	-- window border lights up on the side facing the touch point and follows it
+	-- every frame. Nothing moves, scales or tilts. Hovering without pressing does
+	-- nothing. Window options:
+	--   EdgeGlow         = false  turns the effect off (default on)
+	--   EdgeGlowStrength = 0..1   how bright the border gets, default 0.85
+	--   EdgeGlowColor    = Color3 glow color, default the window Color
+	--   EdgeGlowWidth    = 1..3   border thickness in pixels, default 1.5
+	if guiconfig.EdgeGlow ~= false then
+		local glowstrength = math.clamp(tonumber(guiconfig.EdgeGlowStrength) or 0.85, 0, 1)
+		local glowwidth = math.clamp(tonumber(guiconfig.EdgeGlowWidth) or 1.5, 1, 3)
+		local glowcolor = typeof(guiconfig.EdgeGlowColor) == "Color3" and guiconfig.EdgeGlowColor
+			or guiconfig.Color
+			or Color3.new(1, 1, 1)
 		local runservice = game:GetService("RunService")
 		local maincorner = main:FindFirstChildOfClass("UICorner")
 
-		-- the press itself: UIScale on the window holder (scales about its centre)
-		local presscale = instance.uiscale(dropshadowholder)
-		presscale.Name = "PressScale"
-		presscale.Scale = 1
-
-		local function makeoverlay(name, color)
-			local frame = instance.frame(main)
-			frame.Name = name
-			frame.Active = false
-			pcall(function()
-				frame.Interactable = false
-			end)
-			frame.BackgroundColor3 = color
-			frame.BackgroundTransparency = 0
-			frame.BorderSizePixel = 0
-			frame.Size = UDim2.new(1, 0, 1, 0)
-			frame.ZIndex = 10
-			frame.Visible = false
-			local corner = instance.uicorner(frame)
-			if maincorner then
-				corner.CornerRadius = maincorner.CornerRadius
-			end
-			local gradient = instance.uigradient(frame)
-			gradient.Transparency = NumberSequence.new(1)
-			return frame, gradient
+		local glow = instance.frame(main)
+		glow.Name = "EdgeGlow"
+		glow.Active = false
+		pcall(function()
+			glow.Interactable = false
+		end)
+		glow.BackgroundTransparency = 1
+		glow.BorderSizePixel = 0
+		glow.Size = UDim2.new(1, 0, 1, 0)
+		glow.ZIndex = 10
+		glow.Visible = false
+		local glowcorner = instance.uicorner(glow)
+		if maincorner then
+			glowcorner.CornerRadius = maincorner.CornerRadius
 		end
-
-		local shade, shadegradient, light, lightgradient, edge, edgegradient
-		if guiconfig.TiltGlare ~= false then
-			shade, shadegradient = makeoverlay("TiltShade", Color3.new(0, 0, 0))
-			light, lightgradient = makeoverlay("TiltLight", Color3.new(1, 1, 1))
-			edge = instance.uistroke(light)
-			edge.Color = Color3.new(1, 1, 1)
-			edge.Thickness = 1
-			edge.Transparency = 0
-			edgegradient = instance.uigradient(edge)
-			edgegradient.Transparency = NumberSequence.new(1)
-		end
+		local glowstroke = instance.uistroke(glow)
+		glowstroke.Color = glowcolor
+		glowstroke.Thickness = glowwidth
+		glowstroke.Transparency = 0
+		local glowgradient = instance.uigradient(glowstroke)
+		glowgradient.Transparency = NumberSequence.new(1)
 
 		local pressing = false
 		local active = nil
 		local pointer = Vector2.new(0, 0)
-		-- tx, ty: last pressed point (-1..1 from the window centre), ti: 1 while pressed
+		-- tx, ty: last touched point (-1..1 from the window centre), ti: 1 while pressed
 		local tx, ty, ti = 0, 0, 0
 		local cx, cy, ci = 0, 0, 0
-		local lastscale = 1
 		local settled = true
 
 		local function isclick(input)
@@ -4699,10 +4680,9 @@ function Chloex:Window(guiconfig)
 				or input.UserInputType == Enum.UserInputType.Touch
 		end
 
-		-- window rect as it is at rest (the press scale is divided back out)
-		local function restrect()
-			local size = dropshadowholder.AbsoluteSize / math.max(0.01, lastscale)
-			local center = dropshadowholder.AbsolutePosition + dropshadowholder.AbsoluteSize / 2
+		local function rect()
+			local size = dropshadowholder.AbsoluteSize
+			local center = dropshadowholder.AbsolutePosition + size / 2
 			return center, size / 2
 		end
 
@@ -4711,7 +4691,7 @@ function Chloex:Window(guiconfig)
 				if pressing or not isclick(input) or not dropshadowholder.Visible then
 					return
 				end
-				local center, half = restrect()
+				local center, half = rect()
 				if half.X < 1 or half.Y < 1 then
 					return
 				end
@@ -4723,7 +4703,7 @@ function Chloex:Window(guiconfig)
 				active = input
 				pointer = Vector2.new(pos.X, pos.Y)
 			end),
-			"tilt.InputBegan"
+			"edgeglow.InputBegan"
 		)
 		trackConnection(
 			sv.uis.InputChanged:Connect(function(input)
@@ -4738,7 +4718,7 @@ function Chloex:Window(guiconfig)
 					pointer = Vector2.new(input.Position.X, input.Position.Y)
 				end
 			end),
-			"tilt.InputChanged"
+			"edgeglow.InputChanged"
 		)
 		trackConnection(
 			sv.uis.InputEnded:Connect(function(input)
@@ -4756,7 +4736,7 @@ function Chloex:Window(guiconfig)
 					active = nil
 				end
 			end),
-			"tilt.InputEnded"
+			"edgeglow.InputEnded"
 		)
 
 		trackConnection(
@@ -4765,13 +4745,13 @@ function Chloex:Window(guiconfig)
 					return
 				end
 
-				if pressing and not draggable.resizing then
-					local center, half = restrect()
+				if pressing then
+					local center, half = rect()
 					tx = math.clamp((pointer.X - center.X) / math.max(1, half.X), -1, 1)
 					ty = math.clamp((pointer.Y - center.Y) / math.max(1, half.Y), -1, 1)
 					ti = 1
 				else
-					-- let go: ease out from the last pressed point, not toward the centre
+					-- let go: fade out where the touch was
 					ti = 0
 				end
 
@@ -4779,72 +4759,33 @@ function Chloex:Window(guiconfig)
 					return
 				end
 
-				local a = 1 - math.exp(-dt * 26)
+				local a = 1 - math.exp(-dt * 30)
 				cx = cx + (tx - cx) * a
 				cy = cy + (ty - cy) * a
-				ci = ci + (ti - ci) * a
+				ci = ci + (ti - ci) * math.min(1, a * 0.8)
 
-				if ti == 0 and ci < 0.003 then
-					-- back at rest: restore the exact untilted look
+				if ti == 0 and ci < 0.01 then
 					ci = 0
 					settled = true
-					presscale.Scale = 1
-					lastscale = 1
-					main.Position = UDim2.new(0.5, 0, 0.5, 0)
-					dropshadowholder.Rotation = 0
-					if shade then
-						shade.Visible = false
-						light.Visible = false
-					end
+					glow.Visible = false
 					return
 				end
 				settled = false
 
+				-- t = 1 of the gradient points toward the touch; the closer the touch
+				-- is to an edge, the brighter that edge gets
 				local mag = math.min(1, math.sqrt(cx * cx + cy * cy))
-				local depth = (0.010 + 0.026 * mag) * strength * ci
-				local scale = math.floor((1 - depth) * 1000 + 0.5) / 1000
-
-				-- scale about the pressed point: UIScale scales about the centre, so the
-				-- window content is shifted to keep that point under the finger
-				local _, half = restrect()
-				if scale ~= lastscale then
-					presscale.Scale = scale
-				end
-				local k = (1 - scale) / scale
-				main.Position = UDim2.new(0.5, cx * half.X * k, 0.5, cy * half.Y * k)
-				lastscale = scale
-				if rotate > 0 then
-					dropshadowholder.Rotation = cx * rotate * ci
-				end
-
-				if shade then
-					local level = math.min(1, strength) * ci
-					local angle = math.deg(math.atan2(cy, cx))
-					shade.Visible = true
-					light.Visible = true
-					shadegradient.Rotation = angle
-					lightgradient.Rotation = angle
-					edgegradient.Rotation = angle
-					-- t = 1 is toward the pressed point: that side darkens
-					shadegradient.Transparency = NumberSequence.new({
-						NumberSequenceKeypoint.new(0, 1),
-						NumberSequenceKeypoint.new(0.3, 1),
-						NumberSequenceKeypoint.new(1, math.max(0.5, 1 - (0.05 + 0.25 * mag) * level)),
-					})
-					-- t = 0 is the raised side: it catches light
-					lightgradient.Transparency = NumberSequence.new({
-						NumberSequenceKeypoint.new(0, 1 - 0.11 * mag * level),
-						NumberSequenceKeypoint.new(0.5, 1),
-						NumberSequenceKeypoint.new(1, 1),
-					})
-					edgegradient.Transparency = NumberSequence.new({
-						NumberSequenceKeypoint.new(0, 1 - 0.6 * mag * level),
-						NumberSequenceKeypoint.new(0.55, 1),
-						NumberSequenceKeypoint.new(1, 1),
-					})
-				end
+				local level = glowstrength * ci * (0.3 + 0.7 * mag)
+				glow.Visible = true
+				glowgradient.Rotation = math.deg(math.atan2(cy, cx))
+				glowgradient.Transparency = NumberSequence.new({
+					NumberSequenceKeypoint.new(0, 1),
+					NumberSequenceKeypoint.new(0.55, 1),
+					NumberSequenceKeypoint.new(0.85, 1 - 0.55 * level),
+					NumberSequenceKeypoint.new(1, 1 - level),
+				})
 			end),
-			"tilt.RenderStepped"
+			"edgeglow.RenderStepped"
 		)
 	end
 
