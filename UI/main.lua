@@ -60,6 +60,9 @@ local FONT_MEDIUM = FONT_BOLD
 -- Press Start 2P is about twice as wide as the old font at the same size, so every
 -- text size is scaled down (8 is its native pixel size, the smallest that stays readable).
 local PIXEL_SCALE = 0.65
+-- Press Start 2P has a line height of exactly 1 em, so wrapped lines touch each
+-- other; a taller LineHeight gives them room to breathe.
+local PIXEL_LINEHEIGHT = 1.6
 local function ts(n)
 	n = tonumber(n) or 12
 	if not PIXEL_CUSTOM then
@@ -114,7 +117,7 @@ local function measure(text, size, font, bound)
 			widest = math.max(widest, used)
 			lines = lines + rowcount
 		end
-		return Vector2.new(widest * size, math.max(1, lines) * size)
+		return Vector2.new(widest * size, math.max(1, lines) * size * PIXEL_LINEHEIGHT)
 	end
 	if typeof(font) ~= "EnumItem" then
 		font = Enum.Font.Arcade
@@ -449,7 +452,7 @@ if getgenv().ChloeX_Running then
 		sv.sg:SetCore("SendNotification", {
 			Title = "Vecta Already Opened",
 			Text = "Destroy and Re-Open Vecta?",
-			Icon = "rbxassetid://96240498384290",
+			Icon = "rbxassetid://100997912316573",
 			Duration = 10,
 			Button1 = "Re-Open",
 			Button2 = "Cancel",
@@ -706,6 +709,9 @@ for _, class in ipairs(classes) do
 		local obj = Instance.new(class)
 		if class == "TextLabel" or class == "TextButton" or class == "TextBox" then
 			obj.FontFace = FONT_MEDIUM
+			if PIXEL_CUSTOM then
+				obj.LineHeight = PIXEL_LINEHEIGHT
+			end
 		end
 		obj.Parent = parent
 		return obj
@@ -1634,7 +1640,7 @@ local function buildnotify(cfg, top)
 	local textsize = tonumber(cfg.TextSize) or 13
 	local headersize = tonumber(cfg.HeaderSize) or 14
 
-	local bodyheight = math.max(textsize, textheight(cfg.Content, textsize, FONT_MEDIUM, width - 48, textsize * 8))
+	local bodyheight = math.max(textsize, textheight(cfg.Content, textsize, FONT_MEDIUM, width - 28, textsize * 8))
 	local height = math.max(65, bodyheight + 40)
 
 	local notifyframe = instance.frame(holder)
@@ -1663,13 +1669,6 @@ local function buildnotify(cfg, top)
 	topbar.BackgroundTransparency = 1
 	topbar.BorderSizePixel = 0
 
-	local icon = instance.imagelabel(topbar)
-	icon.BackgroundTransparency = 1
-	icon.Size = UDim2.new(0, 50, 0, 50)
-	icon.Position = UDim2.new(0, -12, 0.9, 0)
-	icon.AnchorPoint = Vector2.new(0, 0.5)
-	icon.Image = "rbxassetid://112887484196744"
-
 	local titlewidth = 0
 	pcall(function()
 		titlewidth = measure(cfg.Title, headersize, FONT_BOLD, Vector2.new(1000, 100)).X
@@ -1684,9 +1683,9 @@ local function buildnotify(cfg, top)
 	title.BackgroundTransparency = 1
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
 	title.Size = UDim2.new(0, titlewidth + 2, 1, 0)
-	title.Position = UDim2.new(0, 38, 0, 0)
+	title.Position = UDim2.new(0, 14, 0, 0)
 
-	local descx = 38 + titlewidth + 8
+	local descx = 14 + titlewidth + 8
 	local desc = instance.textlabel(topbar)
 	desc.FontFace = FONT_BOLD
 	desc.Text = cfg.Description
@@ -1727,8 +1726,8 @@ local function buildnotify(cfg, top)
 	content.TextSize = ts(textsize)
 	content.BackgroundTransparency = 1
 	content.TextColor3 = theme.SubText
-	content.Position = UDim2.new(0, 38, 0, 27)
-	content.Size = UDim2.new(1, -48, 0, bodyheight)
+	content.Position = UDim2.new(0, 14, 0, 27)
+	content.Size = UDim2.new(1, -28, 0, bodyheight)
 
 	local handle = {}
 	local closed = false
@@ -3262,7 +3261,7 @@ function Chloex:Window(guiconfig)
 	guiconfig.Version = guiconfig.Version or 1
 	local userPassedImage = guiconfig.Image
 	local userPassedToggle = guiconfig.ToggleImage or guiconfig.ToggleIcon or guiconfig.ButtonImage
-	guiconfig.Image = guiconfig.Image or "96240498384290"
+	guiconfig.Image = guiconfig.Image or "100997912316573"
 	guiconfig.ImageSize = tonumber(guiconfig.ImageSize) or 48
 	guiconfig.AutoConfigTab = guiconfig.AutoConfigTab ~= false
 	guiconfig.LazyConfigTab = guiconfig.LazyConfigTab ~= false
@@ -3310,7 +3309,7 @@ function Chloex:Window(guiconfig)
 	local bgRaw = guiconfig.Theme
 		or guiconfig.Background
 		or guiconfig.BackgroundImage
-		or (userPassedImage and tostring(userPassedImage):gsub("%s+", "") ~= "96240498384290" and userPassedImage)
+		or (userPassedImage and tostring(userPassedImage):gsub("%s+", "") ~= "100997912316573" and userPassedImage)
 
 	local bgAsset = nil
 	if bgRaw then
@@ -4141,7 +4140,7 @@ function Chloex:Window(guiconfig)
 		mainbutton.Size = UDim2.new(0, guiconfig.ImageSize, 0, guiconfig.ImageSize)
 		mainbutton.Position = UDim2.new(0, 20, 0, 100)
 		mainbutton.BackgroundTransparency = 1
-		local toggleIcon = userPassedToggle or (not bgAsset and userPassedImage) or "96240498384290"
+		local toggleIcon = userPassedToggle or (not bgAsset and userPassedImage) or "100997912316573"
 		local toggleStr = tostring(toggleIcon):gsub("^%s+", ""):gsub("%s+$", "")
 		if toggleStr:match("^%d+$") then
 			toggleStr = "rbxassetid://" .. toggleStr
@@ -4150,9 +4149,9 @@ function Chloex:Window(guiconfig)
 		end
 		if toggleStr:match("^https?://") then
 			local url = toggleStr
-			mainbutton.Image = urlimage(url, true) or "rbxassetid://96240498384290"
+			mainbutton.Image = urlimage(url, true) or "rbxassetid://100997912316573"
 			task.spawn(function()
-				if not mainbutton.Image:match("^rbxassetid://96240498384290") then
+				if not mainbutton.Image:match("^rbxassetid://100997912316573") then
 					return
 				end
 				local asset = urlimage(url)
