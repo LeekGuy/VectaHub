@@ -4628,6 +4628,154 @@ function Chloex:Window(guiconfig)
 
 	makedraggable(top, dropshadowholder)
 
+	-- Window tilt. Roblox GUI has no real 3D perspective, so the tilt is faked with
+	-- depth cues that follow the mouse / finger: the window slides a few pixels
+	-- toward the pointer, a soft glare band sweeps across it, and the edge facing
+	-- the pointer lights up. Window options:
+	--   Tilt         = false  turns the whole effect off (default on)
+	--   TiltStrength = 0..2   how far it moves, default 1
+	--   TiltGlare    = false  drops the glare band and the edge light
+	--   TiltRotate   = 0..3   degrees of real rotation, default 0 (off). Roblox does
+	--                         not clip children properly inside a rotated frame,
+	--                         so keep this small or at 0.
+	if guiconfig.Tilt ~= false then
+		local tiltstrength = math.clamp(tonumber(guiconfig.TiltStrength) or 1, 0, 2)
+		local tiltrotate = math.clamp(tonumber(guiconfig.TiltRotate) or 0, 0, 3)
+		local tiltmove = 3 * tiltstrength
+		local runservice = game:GetService("RunService")
+
+		local glaregradient, edgegradient
+		if guiconfig.TiltGlare ~= false then
+			local glare = instance.frame(main)
+			glare.Name = "TiltGlare"
+			glare.Active = false
+			glare.BackgroundColor3 = Color3.new(1, 1, 1)
+			glare.BackgroundTransparency = 0
+			glare.BorderSizePixel = 0
+			glare.Size = UDim2.new(1, 0, 1, 0)
+			glare.ZIndex = 10
+			local maincorner = main:FindFirstChildOfClass("UICorner")
+			local glarecorner = instance.uicorner(glare)
+			if maincorner then
+				glarecorner.CornerRadius = maincorner.CornerRadius
+			end
+			glaregradient = instance.uigradient(glare)
+			glaregradient.Rotation = 20
+			glaregradient.Transparency = NumberSequence.new(1)
+
+			local edge = instance.uistroke(glare)
+			edge.Color = Color3.new(1, 1, 1)
+			edge.Thickness = 1
+			edge.Transparency = 0
+			edgegradient = instance.uigradient(edge)
+			edgegradient.Transparency = NumberSequence.new(1)
+		end
+
+		-- target (tx, ty, ti) and smoothed (cx, cy, ci) pointer offset: x and y in
+		-- -1..1 from the window centre, i the strength (fades out away from the window)
+		local tx, ty, ti = 0, 0, 0
+		local cx, cy, ci = 0, 0, 0
+		local px, py, pi = 0, 0, 0
+
+		local function aim(pos)
+			local size = dropshadowholder.AbsoluteSize
+			if size.X < 1 or size.Y < 1 then
+				return
+			end
+			local center = dropshadowholder.AbsolutePosition + size / 2
+			local nx = (pos.X - center.X) / (size.X / 2)
+			local ny = (pos.Y - center.Y) / (size.Y / 2)
+			local k = math.clamp(2 - math.max(math.abs(nx), math.abs(ny)), 0, 1)
+			tx = math.clamp(nx, -1, 1) * k
+			ty = math.clamp(ny, -1, 1) * k
+			ti = k
+		end
+
+		local function rest()
+			tx, ty, ti = 0, 0, 0
+		end
+
+		trackConnection(
+			sv.uis.InputChanged:Connect(function(input)
+				if
+					input.UserInputType == Enum.UserInputType.MouseMovement
+					or input.UserInputType == Enum.UserInputType.Touch
+				then
+					aim(input.Position)
+				end
+			end),
+			"tilt.InputChanged"
+		)
+		trackConnection(
+			sv.uis.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.Touch then
+					aim(input.Position)
+				end
+			end),
+			"tilt.InputBegan"
+		)
+		trackConnection(
+			sv.uis.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.Touch then
+					rest()
+				end
+			end),
+			"tilt.InputEnded"
+		)
+
+		trackConnection(
+			runservice.RenderStepped:Connect(function(dt)
+				if not dropshadowholder.Visible then
+					return
+				end
+				if draggable.resizing then
+					rest()
+				end
+				local a = 1 - math.exp(-dt * 14)
+				cx = cx + (tx - cx) * a
+				cy = cy + (ty - cy) * a
+				ci = ci + (ti - ci) * a
+				-- nothing moved: leave the frames alone
+				if math.abs(cx - px) < 0.002 and math.abs(cy - py) < 0.002 and math.abs(ci - pi) < 0.002 then
+					return
+				end
+				px, py, pi = cx, cy, ci
+
+				-- whole pixels keep the pixel font crisp
+				main.Position = UDim2.new(
+					0.5,
+					math.floor(cx * tiltmove + 0.5),
+					0.5,
+					math.floor(cy * tiltmove + 0.5)
+				)
+				if tiltrotate > 0 then
+					dropshadowholder.Rotation = cx * tiltrotate
+				end
+
+				if glaregradient then
+					local level = 1 - 0.09 * math.min(1, tiltstrength) * ci
+					glaregradient.Offset = Vector2.new(cx * 0.6, 0)
+					glaregradient.Rotation = 20 + cy * 15
+					glaregradient.Transparency = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 1),
+						NumberSequenceKeypoint.new(0.3, 1),
+						NumberSequenceKeypoint.new(0.5, level),
+						NumberSequenceKeypoint.new(0.7, 1),
+						NumberSequenceKeypoint.new(1, 1),
+					})
+					local mag = math.min(1, math.sqrt(cx * cx + cy * cy))
+					edgegradient.Rotation = math.deg(math.atan2(cy, cx))
+					edgegradient.Transparency = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 1),
+						NumberSequenceKeypoint.new(0.45, 1),
+						NumberSequenceKeypoint.new(1, 1 - 0.55 * math.min(1, tiltstrength) * mag * ci),
+					})
+				end
+			end),
+			"tilt.RenderStepped"
+		)
+	end
+
 	local moreblur = instance.frame(layers)
 	moreblur.Name = "MoreBlur"
 	moreblur.AnchorPoint = Vector2.new(1, 1)
