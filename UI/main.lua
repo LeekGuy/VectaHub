@@ -3309,7 +3309,11 @@ function Chloex:Window(guiconfig)
 	local bgRaw = guiconfig.Theme
 		or guiconfig.Background
 		or guiconfig.BackgroundImage
-		or (userPassedImage and tostring(userPassedImage):gsub("%s+", "") ~= "100997912316573" and userPassedImage)
+		or (
+			userPassedImage
+			and (tostring(userPassedImage):gsub("%s+", ""):gsub("^rbxassetid://", "")) ~= "100997912316573"
+			and userPassedImage
+		)
 
 	local bgAsset = nil
 	if bgRaw then
@@ -3827,8 +3831,8 @@ function Chloex:Window(guiconfig)
 
 	-- Footer status chips (Executor, FPS) are read-only, so they carry no fill and
 	-- no border. A pressable chip (Button = true, e.g. Join Discord) gets a fill and
-	-- a border: in this window a filled shape always means "you can press this", and
-	-- it also keeps the button visually apart from the flat chips next to it.
+	-- a faint transparent border: in this window a filled shape always means "you
+	-- can press this", and it keeps the button apart from the flat chips next to it.
 	local function makepill(parent, pillconfig)
 		local pill = pillconfig.Button and instance.textbutton(parent) or instance.frame(parent)
 		if pillconfig.Button then
@@ -3849,6 +3853,9 @@ function Chloex:Window(guiconfig)
 			pillstroke.Name = "PillStroke"
 			pillstroke.Color = theme.Stroke
 			pillstroke.Thickness = 1
+			-- almost invisible: only a faint edge to keep the button apart from FPS
+			-- (1 = fully invisible, 0.5 = clearly visible)
+			pillstroke.Transparency = 0.75
 			pillstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		end
 
@@ -4179,6 +4186,38 @@ function Chloex:Window(guiconfig)
 
 		local uicorner = instance.uicorner(mainbutton)
 		uicorner.CornerRadius = UDim.new(0, 6)
+
+		-- If the logo asset never loads (private / moderated / blocked id, or the
+		-- download failed) the button used to stay completely invisible. Show a
+		-- visible placeholder icon instead, and drop it again if the image arrives.
+		local logofallback = instance.imagelabel(mainbutton)
+		logofallback.Name = "LogoFallback"
+		logofallback.AnchorPoint = Vector2.new(0.5, 0.5)
+		logofallback.Position = UDim2.new(0.5, 0, 0.5, 0)
+		logofallback.Size = UDim2.new(0.5, 0, 0.5, 0)
+		logofallback.BackgroundTransparency = 1
+		logofallback.ImageColor3 = theme.Text
+		logofallback.Visible = false
+		applyicon(logofallback, "menu", 48)
+		local function logoplaceholder(on)
+			logofallback.Visible = on
+			mainbutton.BackgroundTransparency = on and 0 or 1
+			mainbutton.BackgroundColor3 = theme.Element
+		end
+		task.spawn(function()
+			local t0 = os.clock()
+			while mainbutton.Parent and not mainbutton.IsLoaded and os.clock() - t0 < 8 do
+				task.wait(0.25)
+			end
+			if mainbutton.Parent and not mainbutton.IsLoaded then
+				logoplaceholder(true)
+			end
+		end)
+		mainbutton:GetPropertyChangedSignal("IsLoaded"):Connect(function()
+			if mainbutton.IsLoaded then
+				logoplaceholder(false)
+			end
+		end)
 
 		local button = instance.textbutton(mainbutton)
 		button.Size = UDim2.new(1, 0, 1, 0)
