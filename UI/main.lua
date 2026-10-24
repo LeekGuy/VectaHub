@@ -3936,6 +3936,77 @@ function Chloex:Window(guiconfig)
 		return row
 	end
 
+	-- Join Discord chip: always the leftmost chip (LayoutOrder 0, the hub's own
+	-- chips such as Ping start at 1). Click copies the invite link.
+	do
+		local DISCORD_LINK = "https://discord.gg/NNYG29yXDv"
+		local chip = instance.textbutton(headerchips.holder)
+		chip.Name = "JoinDiscord"
+		chip.Text = ""
+		chip.AutoButtonColor = false
+		chip.LayoutOrder = 0
+		chip.Size = UDim2.new(0, 0, 0, 22)
+		chip.AutomaticSize = Enum.AutomaticSize.X
+		chip.BackgroundColor3 = theme.Pill
+		chip.BorderSizePixel = 0
+		instance.uicorner(chip).CornerRadius = UDim.new(0, 5)
+		local chipstroke = instance.uistroke(chip)
+		chipstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		chipstroke.Color = theme.Stroke
+		chipstroke.Transparency = 0.3
+		local pad = instance.uipadding(chip)
+		pad.PaddingLeft = UDim.new(0, 5)
+		pad.PaddingRight = UDim.new(0, 8)
+		local lay = instance.uilistlayout(chip)
+		lay.FillDirection = Enum.FillDirection.Horizontal
+		lay.VerticalAlignment = Enum.VerticalAlignment.Center
+		lay.SortOrder = Enum.SortOrder.LayoutOrder
+		lay.Padding = UDim.new(0, 4)
+
+		local img = instance.imagelabel(chip)
+		img.BackgroundTransparency = 1
+		img.ScaleType = Enum.ScaleType.Fit
+		img.Size = UDim2.new(0, 14, 0, 14)
+		img.LayoutOrder = 1
+		applyicon(img, "5420367332", 48)
+
+		local label = instance.textlabel(chip)
+		label.BackgroundTransparency = 1
+		label.FontFace = FONT_MEDIUM
+		label.TextSize = ts(12)
+		label.TextColor3 = theme.Text
+		label.Text = "Join Discord"
+		label.Size = UDim2.new(0, 0, 1, 0)
+		label.AutomaticSize = Enum.AutomaticSize.X
+		label.LayoutOrder = 2
+
+		chip.MouseEnter:Connect(function()
+			chip.BackgroundColor3 = theme.ElementHover
+		end)
+		chip.MouseLeave:Connect(function()
+			chip.BackgroundColor3 = theme.Pill
+		end)
+
+		local resetting = 0
+		chip.Activated:Connect(function()
+			elevate()
+			local ok = clipboardwrite(DISCORD_LINK)
+			resetting = resetting + 1
+			local mine = resetting
+			label.Text = ok and "Copied!" or "No clipboard"
+			label.TextColor3 = ok and theme.Good or theme.Bad
+			if not ok then
+				warn("[Vecta] Discord: " .. DISCORD_LINK)
+			end
+			task.delay(1.5, function()
+				if mine == resetting and label.Parent then
+					label.Text = "Join Discord"
+					label.TextColor3 = theme.Text
+				end
+			end)
+		end)
+	end
+
 	local close = instance.textbutton(top)
 	close.Name = "Close"
 	close.FontFace = FONT_MEDIUM
@@ -4012,8 +4083,8 @@ function Chloex:Window(guiconfig)
 		imagelabel2.ImageColor3 = theme.SubText
 	end)
 
-	-- Dot button (left of minimize): ring = the floating logo can be dragged,
-	-- filled dot = the logo is locked in place. Icons come from the Lucide API.
+	-- Dot button (left of minimize): on = the floating logo can be dragged,
+	-- off = the logo is locked in place. Icons come from the Lucide API.
 	local logodrag = { enabled = true }
 	local dotbtn = instance.textbutton(top)
 	dotbtn.Name = "LogoDragToggle"
@@ -4042,8 +4113,8 @@ function Chloex:Window(guiconfig)
 		dotbtn.TextColor3 = color
 	end
 	local function refreshdot()
-		-- ring (circle) = draggable, filled dot = locked
-		local ok = applyicon(dotimage, logodrag.enabled and "circle" or "dot", 48)
+		-- draggable = circle-dashed, locked = circle-dot-dashed
+		local ok = applyicon(dotimage, logodrag.enabled and "circle-dashed" or "circle-dot-dashed", 48)
 		dotimage.Visible = ok
 		-- plain-text fallback if the Lucide pack could not load
 		dotbtn.Text = ok and "" or (logodrag.enabled and "\194\176" or "\226\128\162")
