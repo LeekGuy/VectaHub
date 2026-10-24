@@ -57,6 +57,17 @@ else
 end
 local FONT_MEDIUM = FONT_BOLD
 
+-- Press Start 2P is about twice as wide as the old font at the same size, so every
+-- text size is scaled down (8 is its native pixel size, the smallest that stays readable).
+local PIXEL_SCALE = 0.65
+local function ts(n)
+	n = tonumber(n) or 12
+	if not PIXEL_CUSTOM then
+		return n
+	end
+	return math.max(8, math.floor(n * PIXEL_SCALE + 0.5))
+end
+
 local sv = {
 	http = game:GetService("HttpService"),
 	uis = game:GetService("UserInputService"),
@@ -72,6 +83,7 @@ local sv = {
 local function measure(text, size, font, bound)
 	text = tostring(text or "")
 	if PIXEL_CUSTOM and typeof(font) == "Font" then
+		size = ts(size)
 		local maxchars = math.max(1, math.floor(bound.X / size))
 		local lines, widest = 0, 0
 		for paragraph in (text .. "\n"):gmatch("(.-)\n") do
@@ -1667,7 +1679,7 @@ local function buildnotify(cfg, top)
 	local title = instance.textlabel(topbar)
 	title.FontFace = FONT_BOLD
 	title.Text = cfg.Title
-	title.TextSize = headersize
+	title.TextSize = ts(headersize)
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.BackgroundTransparency = 1
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1678,7 +1690,7 @@ local function buildnotify(cfg, top)
 	local desc = instance.textlabel(topbar)
 	desc.FontFace = FONT_BOLD
 	desc.Text = cfg.Description
-	desc.TextSize = headersize
+	desc.TextSize = ts(headersize)
 	desc.TextXAlignment = Enum.TextXAlignment.Left
 	desc.TextTruncate = Enum.TextTruncate.AtEnd
 	desc.BackgroundTransparency = 1
@@ -1712,7 +1724,7 @@ local function buildnotify(cfg, top)
 	content.TextTruncate = Enum.TextTruncate.AtEnd
 	content.TextXAlignment = Enum.TextXAlignment.Left
 	content.TextYAlignment = Enum.TextYAlignment.Top
-	content.TextSize = textsize
+	content.TextSize = ts(textsize)
 	content.BackgroundTransparency = 1
 	content.TextColor3 = theme.SubText
 	content.Position = UDim2.new(0, 38, 0, 27)
@@ -2028,7 +2040,7 @@ function Chloex:Announce(announceconfig)
 	badgeFallback.FontFace = FONT_BOLD
 	badgeFallback.Text = "!"
 	badgeFallback.TextColor3 = theme.Text
-	badgeFallback.TextSize = 16
+	badgeFallback.TextSize = ts(16)
 	badgeFallback.TextTransparency = 1
 	badgeFallback.Visible = (badgeIcon.Image == "")
 
@@ -2039,7 +2051,7 @@ function Chloex:Announce(announceconfig)
 	titleLabel.FontFace = FONT_BOLD
 	titleLabel.Text = title
 	titleLabel.TextColor3 = theme.Text
-	titleLabel.TextSize = 14
+	titleLabel.TextSize = ts(14)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	titleLabel.TextTransparency = 1
@@ -2060,7 +2072,7 @@ function Chloex:Announce(announceconfig)
 		fromLabel.RichText = true
 		fromLabel.Text = '<font color="' .. hexcolor(theme.SubText) .. '">From</font>  <b>' .. escaperich(sender) .. "</b>" .. badgeText
 		fromLabel.TextColor3 = theme.Text
-		fromLabel.TextSize = 12
+		fromLabel.TextSize = ts(12)
 		fromLabel.TextXAlignment = Enum.TextXAlignment.Left
 		fromLabel.TextTruncate = Enum.TextTruncate.AtEnd
 		fromLabel.TextTransparency = 1
@@ -2075,7 +2087,7 @@ function Chloex:Announce(announceconfig)
 		descLabel.FontFace = FONT_BOLD
 		descLabel.Text = content
 		descLabel.TextColor3 = theme.Text
-		descLabel.TextSize = 13
+		descLabel.TextSize = ts(13)
 		descLabel.TextXAlignment = Enum.TextXAlignment.Left
 		descLabel.TextYAlignment = Enum.TextYAlignment.Top
 		descLabel.TextWrapped = true
@@ -2113,7 +2125,7 @@ function Chloex:Announce(announceconfig)
 		closeText.FontFace = FONT_BOLD
 		closeText.Text = "×"
 		closeText.TextColor3 = theme.SubText
-		closeText.TextSize = 16
+		closeText.TextSize = ts(16)
 		closeText.TextTransparency = 1
 		closeText.ZIndex = 4
 	end
@@ -2275,14 +2287,14 @@ function Chloex:Prompt(promptconfig)
 			mark.FontFace = FONT_BOLD
 			mark.Text = "?"
 			mark.TextColor3 = theme.Text
-			mark.TextSize = 14
+			mark.TextSize = ts(14)
 		end
 
 		local titlelabel = instance.textlabel(notifyframereal)
 		titlelabel.FontFace = FONT_BOLD
 		titlelabel.Text = title
 		titlelabel.RichText = true
-		titlelabel.TextSize = 14
+		titlelabel.TextSize = ts(14)
 		titlelabel.TextColor3 = theme.Text
 		titlelabel.TextXAlignment = Enum.TextXAlignment.Left
 		titlelabel.TextTruncate = Enum.TextTruncate.AtEnd
@@ -2293,7 +2305,7 @@ function Chloex:Prompt(promptconfig)
 		local contentlabel = instance.textlabel(notifyframereal)
 		contentlabel.FontFace = FONT_MEDIUM
 		contentlabel.Text = content
-		contentlabel.TextSize = 12
+		contentlabel.TextSize = ts(12)
 		contentlabel.TextColor3 = theme.SubText
 		contentlabel.TextWrapped = true
 		contentlabel.TextTruncate = Enum.TextTruncate.AtEnd
@@ -2315,7 +2327,7 @@ function Chloex:Prompt(promptconfig)
 			btn.FontFace = FONT_BOLD
 			btn.Text = text
 			btn.TextColor3 = accent and theme.AccentText or theme.Text
-			btn.TextSize = 12
+			btn.TextSize = ts(12)
 			btn.TextTruncate = Enum.TextTruncate.AtEnd
 			btn.AutoButtonColor = true
 			instance.uicorner(btn).CornerRadius = UDim.new(0, 6)
@@ -2429,7 +2441,7 @@ function Chloex:MakeOverlay(overlayconfig)
 	contentlabel.FontFace = FONT_BOLD
 	contentlabel.Text = overlayconfig.Content
 	contentlabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	contentlabel.TextSize = 13
+	contentlabel.TextSize = ts(13)
 	contentlabel.BackgroundTransparency = 1
 	contentlabel.TextWrapped = true
 	contentlabel.AutomaticSize = Enum.AutomaticSize.Y
@@ -3823,7 +3835,7 @@ function Chloex:Window(guiconfig)
 	textlabel.FontFace = FONT_BOLD
 	textlabel.Text = guiconfig.Title
 	textlabel.TextColor3 = theme.Text
-	textlabel.TextSize = 14
+	textlabel.TextSize = ts(14)
 	textlabel.TextTruncate = Enum.TextTruncate.AtEnd
 	textlabel.TextXAlignment = Enum.TextXAlignment.Left
 	textlabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -3842,7 +3854,7 @@ function Chloex:Window(guiconfig)
 	textlabel1.FontFace = FONT_MEDIUM
 	textlabel1.Text = guiconfig.Footer
 	textlabel1.TextColor3 = theme.SubText
-	textlabel1.TextSize = 13
+	textlabel1.TextSize = ts(13)
 	textlabel1.TextTruncate = Enum.TextTruncate.AtEnd
 	textlabel1.TextXAlignment = Enum.TextXAlignment.Left
 	textlabel1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -3914,7 +3926,7 @@ function Chloex:Window(guiconfig)
 		local label = instance.textlabel(chip)
 		label.BackgroundTransparency = 1
 		label.FontFace = FONT_MEDIUM
-		label.TextSize = 12
+		label.TextSize = ts(12)
 		label.TextColor3 = theme.Text
 		label.Size = UDim2.new(0, 0, 1, 0)
 		label.AutomaticSize = Enum.AutomaticSize.X
@@ -3929,7 +3941,7 @@ function Chloex:Window(guiconfig)
 	close.FontFace = FONT_MEDIUM
 	close.Text = ""
 	close.TextColor3 = Color3.fromRGB(0, 0, 0)
-	close.TextSize = 14
+	close.TextSize = ts(14)
 	close.AnchorPoint = Vector2.new(1, 0.5)
 	close.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	close.BackgroundTransparency = 1
@@ -3974,7 +3986,7 @@ function Chloex:Window(guiconfig)
 	min.FontFace = FONT_MEDIUM
 	min.Text = ""
 	min.TextColor3 = Color3.fromRGB(0, 0, 0)
-	min.TextSize = 14
+	min.TextSize = ts(14)
 	min.AnchorPoint = Vector2.new(1, 0.5)
 	min.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	min.BackgroundTransparency = 1
@@ -4007,7 +4019,7 @@ function Chloex:Window(guiconfig)
 	dotbtn.Name = "LogoDragToggle"
 	dotbtn.FontFace = FONT_BOLD
 	dotbtn.Text = ""
-	dotbtn.TextSize = 18
+	dotbtn.TextSize = ts(18)
 	dotbtn.TextColor3 = theme.SubText
 	dotbtn.AnchorPoint = Vector2.new(1, 0.5)
 	dotbtn.BackgroundTransparency = 1
@@ -4061,7 +4073,7 @@ function Chloex:Window(guiconfig)
 	searchbox.PlaceholderColor3 = theme.Dim
 	searchbox.Text = ""
 	searchbox.TextColor3 = theme.Text
-	searchbox.TextSize = 12
+	searchbox.TextSize = ts(12)
 	searchbox.TextXAlignment = Enum.TextXAlignment.Left
 	searchbox.ClearTextOnFocus = false
 	searchbox.ClipsDescendants = true
@@ -4230,7 +4242,7 @@ function Chloex:Window(guiconfig)
 	username.BackgroundTransparency = 1
 	username.FontFace = FONT_MEDIUM
 	username.TextColor3 = Color3.fromRGB(255, 255, 255)
-	username.TextSize = 12
+	username.TextSize = ts(12)
 	username.TextXAlignment = Enum.TextXAlignment.Left
 	username.Position = UDim2.new(0, 42, 0, 0)
 	username.Size = UDim2.new(0, 140, 1, 0)
@@ -4306,7 +4318,7 @@ function Chloex:Window(guiconfig)
 		label.FontFace = FONT_BOLD
 		label.Text = pillconfig.Text or ""
 		label.TextColor3 = pillconfig.Color or theme.SubText
-		label.TextSize = 11
+		label.TextSize = ts(11)
 
 		return pill, label, icon
 	end
@@ -4464,7 +4476,7 @@ function Chloex:Window(guiconfig)
 		title.BackgroundTransparency = 1
 		title.FontFace = FONT_BOLD
 		title.Text = "Vecta Window"
-		title.TextSize = 22
+		title.TextSize = ts(22)
 		title.TextColor3 = Color3.fromRGB(255, 255, 255)
 		title.ZIndex = 52
 
@@ -4475,7 +4487,7 @@ function Chloex:Window(guiconfig)
 		message.BackgroundTransparency = 1
 		message.FontFace = FONT_MEDIUM
 		message.Text = "Do you want to close this window?\nYou will not be able to open it again"
-		message.TextSize = 14
+		message.TextSize = ts(14)
 		message.TextColor3 = theme.SubText
 		message.TextWrapped = true
 		message.ZIndex = 52
@@ -4489,7 +4501,7 @@ function Chloex:Window(guiconfig)
 		yes.AutoButtonColor = true
 		yes.Text = "Yes"
 		yes.FontFace = FONT_BOLD
-		yes.TextSize = 15
+		yes.TextSize = ts(15)
 		yes.TextColor3 = Color3.fromRGB(255, 255, 255)
 		yes.TextTransparency = 0.3
 		yes.ZIndex = 52
@@ -4505,7 +4517,7 @@ function Chloex:Window(guiconfig)
 		cancel.AutoButtonColor = true
 		cancel.Text = "Cancel"
 		cancel.FontFace = FONT_BOLD
-		cancel.TextSize = 15
+		cancel.TextSize = ts(15)
 		cancel.TextColor3 = Color3.fromRGB(255, 255, 255)
 		cancel.TextTransparency = 0.3
 		cancel.ZIndex = 52
@@ -4668,7 +4680,7 @@ function Chloex:Window(guiconfig)
 		local ttitle = instance.textlabel(t)
 		ttitle.Name = "ToggleTitle"
 		ttitle.FontFace = FONT_BOLD
-		ttitle.TextSize = 13
+		ttitle.TextSize = ts(13)
 		ttitle.TextColor3 = theme.Text
 		ttitle.TextXAlignment = Enum.TextXAlignment.Left
 		ttitle.TextYAlignment = Enum.TextYAlignment.Top
@@ -4721,7 +4733,7 @@ function Chloex:Window(guiconfig)
 		stitle.Name = "SliderTitle"
 		stitle.FontFace = FONT_BOLD
 		stitle.TextColor3 = theme.Text
-		stitle.TextSize = 13
+		stitle.TextSize = ts(13)
 		stitle.TextXAlignment = Enum.TextXAlignment.Left
 		stitle.TextYAlignment = Enum.TextYAlignment.Center
 		stitle.TextTruncate = Enum.TextTruncate.AtEnd
@@ -4741,7 +4753,7 @@ function Chloex:Window(guiconfig)
 		sinput.FontFace = FONT_BOLD
 		sinput.Text = ""
 		sinput.TextColor3 = Color3.fromRGB(255, 255, 255)
-		sinput.TextSize = 12
+		sinput.TextSize = ts(12)
 		sinput.TextScaled = true
 		sinput.TextXAlignment = Enum.TextXAlignment.Center
 		sinput.TextYAlignment = Enum.TextYAlignment.Center
@@ -4751,8 +4763,8 @@ function Chloex:Window(guiconfig)
 		sinput.Position = UDim2.new(0, 3, 0, 0)
 
 		local sinputconstraint = instance.uitextsizeconstraint(sinput)
-		sinputconstraint.MinTextSize = 10
-		sinputconstraint.MaxTextSize = 12
+		sinputconstraint.MinTextSize = ts(10)
+		sinputconstraint.MaxTextSize = ts(12)
 
 		local sbar = instance.frame(s)
 		sbar.Name = "SliderBar"
@@ -4803,15 +4815,15 @@ function Chloex:Window(guiconfig)
 		sbubbletext.Position = UDim2.new(0, 3, 0, 0)
 		sbubbletext.FontFace = FONT_BOLD
 		sbubbletext.TextColor3 = Color3.fromRGB(255, 255, 255)
-		sbubbletext.TextSize = 11
+		sbubbletext.TextSize = ts(11)
 		sbubbletext.TextScaled = true
 		sbubbletext.TextXAlignment = Enum.TextXAlignment.Center
 		sbubbletext.TextYAlignment = Enum.TextYAlignment.Center
 		sbubbletext.ZIndex = 21
 
 		local sbubbleconstraint = instance.uitextsizeconstraint(sbubbletext)
-		sbubbleconstraint.MinTextSize = 9
-		sbubbleconstraint.MaxTextSize = 11
+		sbubbleconstraint.MinTextSize = ts(9)
+		sbubbleconstraint.MaxTextSize = ts(11)
 
 		templates.Slider = s
 	end
@@ -4831,7 +4843,7 @@ function Chloex:Window(guiconfig)
 		local otext = instance.textlabel(o)
 		otext.Name = "OptionText"
 		otext.FontFace = FONT_BOLD
-		otext.TextSize = 12
+		otext.TextSize = ts(12)
 		otext.TextColor3 = theme.Text
 		otext.BackgroundTransparency = 1
 		otext.TextXAlignment = Enum.TextXAlignment.Left
@@ -4895,7 +4907,7 @@ function Chloex:Window(guiconfig)
 	connectbutton.FontFace = FONT_MEDIUM
 	connectbutton.Text = ""
 	connectbutton.TextColor3 = Color3.fromRGB(0, 0, 0)
-	connectbutton.TextSize = 14
+	connectbutton.TextSize = ts(14)
 	connectbutton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	connectbutton.BackgroundTransparency = 1
 	connectbutton.BorderColor3 = Color3.fromRGB(0, 0, 0)
@@ -5079,7 +5091,7 @@ function Chloex:Window(guiconfig)
 		label.RichText = true
 		label.Text = text
 		label.TextColor3 = theme.SubText
-		label.TextSize = CONTENT_SIZE
+		label.TextSize = ts(CONTENT_SIZE)
 		label.TextWrapped = true
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.TextYAlignment = Enum.TextYAlignment.Top
@@ -5183,7 +5195,7 @@ function Chloex:Window(guiconfig)
 			local tierlabel = donatoronly and "Donator only" or "Donator / Trial"
 			notice.Text = '<font color="' .. hexcolor(theme.Text) .. '">' .. tierlabel .. '</font>'
 			notice.TextColor3 = theme.SubText
-			notice.TextSize = 11
+			notice.TextSize = ts(11)
 			notice.TextXAlignment = Enum.TextXAlignment.Left
 			notice.TextTruncate = Enum.TextTruncate.AtEnd
 			notice.Position = UDim2.new(0, 10, 0, baseheight - 4)
@@ -5233,7 +5245,7 @@ function Chloex:Window(guiconfig)
 			pilltext.FontFace = FONT_BOLD
 			pilltext.Text = "LOCKED"
 			pilltext.TextColor3 = theme.Text
-			pilltext.TextSize = 10
+			pilltext.TextSize = ts(10)
 			pilltext.ZIndex = 13
 
 			local shield = instance.textbutton(container)
@@ -5492,7 +5504,7 @@ function Chloex:Window(guiconfig)
 		tabbutton.FontFace = FONT_BOLD
 		tabbutton.Text = ""
 		tabbutton.TextColor3 = Color3.fromRGB(255, 255, 255)
-		tabbutton.TextSize = 13
+		tabbutton.TextSize = ts(13)
 		tabbutton.TextXAlignment = Enum.TextXAlignment.Left
 		tabbutton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 		tabbutton.BackgroundTransparency = 1
@@ -5520,7 +5532,7 @@ function Chloex:Window(guiconfig)
 		tabname.FontFace = FONT_BOLD
 		tabname.Text = tostring(tabconfig.Name)
 		tabname.TextColor3 = Color3.fromRGB(255, 255, 255)
-		tabname.TextSize = 13
+		tabname.TextSize = ts(13)
 		tabname.TextTruncate = Enum.TextTruncate.AtEnd
 		tabname.TextXAlignment = Enum.TextXAlignment.Left
 		tabname.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -5583,7 +5595,7 @@ function Chloex:Window(guiconfig)
 		badgetext.Size = UDim2.new(0, 0, 1, 0)
 		badgetext.Text = ""
 		badgetext.TextColor3 = Color3.fromRGB(255, 255, 255)
-		badgetext.TextSize = compactsidebar and 9 or 10
+		badgetext.TextSize = ts(compactsidebar and 9 or 10)
 		badgetext.ZIndex = 3
 
 		local function isactive()
@@ -5757,7 +5769,7 @@ function Chloex:Window(guiconfig)
 			sectiontitle.FontFace = FONT_BOLD
 			sectiontitle.Text = sectiontitletext
 			sectiontitle.TextColor3 = theme.Text
-			sectiontitle.TextSize = 13
+			sectiontitle.TextSize = ts(13)
 			sectiontitle.TextTruncate = Enum.TextTruncate.AtEnd
 			sectiontitle.TextXAlignment = Enum.TextXAlignment.Left
 			sectiontitle.AnchorPoint = Vector2.new(0, 0.5)
@@ -5949,7 +5961,7 @@ function Chloex:Window(guiconfig)
 				paragraphtitle.FontFace = FONT_BOLD
 				paragraphtitle.Text = paragraphconfig.Title
 				paragraphtitle.TextColor3 = theme.Text
-				paragraphtitle.TextSize = 13
+				paragraphtitle.TextSize = ts(13)
 				paragraphtitle.TextXAlignment = Enum.TextXAlignment.Left
 				paragraphtitle.TextYAlignment = Enum.TextYAlignment.Top
 				paragraphtitle.TextTruncate = Enum.TextTruncate.AtEnd
@@ -5964,7 +5976,7 @@ function Chloex:Window(guiconfig)
 				paragraphcontent.Text = paragraphconfig.Content
 				paragraphcontent.TextColor3 = theme.Text
 				paragraphcontent.TextTransparency = 0.12
-				paragraphcontent.TextSize = 12
+				paragraphcontent.TextSize = ts(12)
 				paragraphcontent.TextXAlignment = Enum.TextXAlignment.Left
 				paragraphcontent.TextYAlignment = Enum.TextYAlignment.Top
 				paragraphcontent.BackgroundTransparency = 1
@@ -5979,7 +5991,7 @@ function Chloex:Window(guiconfig)
 					paragraphbutton.Position = UDim2.new(0, 10, 0, 42)
 					paragraphbutton.Size = UDim2.new(1, -20, 0, 28)
 					paragraphbutton.FontFace = FONT_BOLD
-					paragraphbutton.TextSize = 12
+					paragraphbutton.TextSize = ts(12)
 					paragraphbutton.TextColor3 = theme.Text
 					paragraphbutton.TextTruncate = Enum.TextTruncate.AtEnd
 					paragraphbutton.Text = paragraphconfig.ButtonText
@@ -6131,7 +6143,7 @@ function Chloex:Window(guiconfig)
 				title.FontFace = FONT_BOLD
 				title.Text = tostring(gridconfig.Title or "Collection")
 				title.TextColor3 = theme.Text
-				title.TextSize = 13
+				title.TextSize = ts(13)
 				title.TextXAlignment = Enum.TextXAlignment.Left
 				title.TextTruncate = Enum.TextTruncate.AtEnd
 				title.BackgroundTransparency = 1
@@ -6143,7 +6155,7 @@ function Chloex:Window(guiconfig)
 				note.FontFace = FONT_MEDIUM
 				note.Text = tostring(gridconfig.Note or "")
 				note.TextColor3 = theme.SubText
-				note.TextSize = 12
+				note.TextSize = ts(12)
 				note.TextXAlignment = Enum.TextXAlignment.Right
 				note.TextTruncate = Enum.TextTruncate.AtEnd
 				note.BackgroundTransparency = 1
@@ -6198,7 +6210,7 @@ function Chloex:Window(guiconfig)
 						local l = instance.textlabel(card)
 						l.Name = name
 						l.FontFace = font
-						l.TextSize = size
+						l.TextSize = ts(size)
 						l.TextColor3 = color
 						l.BackgroundTransparency = 1
 						l.TextXAlignment = Enum.TextXAlignment.Center
@@ -6317,7 +6329,7 @@ function Chloex:Window(guiconfig)
 				header.TextTruncate = Enum.TextTruncate.AtEnd
 				header.Text = tostring(listconfig.Title)
 				header.TextColor3 = theme.Text
-				header.TextSize = 13
+				header.TextSize = ts(13)
 				header.TextXAlignment = Enum.TextXAlignment.Left
 				header.BackgroundTransparency = 1
 				header.Position = UDim2.new(0, 10, 0, 9)
@@ -6328,7 +6340,7 @@ function Chloex:Window(guiconfig)
 				counter.FontFace = FONT_BOLD
 				counter.Text = "0"
 				counter.TextColor3 = theme.SubText
-				counter.TextSize = 12
+				counter.TextSize = ts(12)
 				counter.TextXAlignment = Enum.TextXAlignment.Right
 				counter.BackgroundTransparency = 1
 				counter.AnchorPoint = Vector2.new(1, 0)
@@ -6357,7 +6369,7 @@ function Chloex:Window(guiconfig)
 				empty.FontFace = FONT_MEDIUM
 				empty.Text = emptytext
 				empty.TextColor3 = theme.Dim
-				empty.TextSize = 12
+				empty.TextSize = ts(12)
 				empty.TextXAlignment = Enum.TextXAlignment.Left
 				empty.BackgroundTransparency = 1
 				empty.LayoutOrder = 0
@@ -6396,7 +6408,7 @@ function Chloex:Window(guiconfig)
 					name.Name = "RowName"
 					name.FontFace = FONT_BOLD
 					name.TextColor3 = theme.Text
-					name.TextSize = 12
+					name.TextSize = ts(12)
 					name.RichText = true
 					name.TextTruncate = Enum.TextTruncate.AtEnd
 					name.TextXAlignment = Enum.TextXAlignment.Left
@@ -6408,7 +6420,7 @@ function Chloex:Window(guiconfig)
 					sub.Name = "RowSub"
 					sub.FontFace = FONT_MEDIUM
 					sub.TextColor3 = theme.SubText
-					sub.TextSize = 11
+					sub.TextSize = ts(11)
 					sub.RichText = true
 					sub.TextTruncate = Enum.TextTruncate.AtEnd
 					sub.TextXAlignment = Enum.TextXAlignment.Left
@@ -6420,7 +6432,7 @@ function Chloex:Window(guiconfig)
 					status.Name = "RowStatus"
 					status.FontFace = FONT_BOLD
 					status.TextColor3 = theme.Text
-					status.TextSize = 12
+					status.TextSize = ts(12)
 					status.RichText = true
 					status.TextTruncate = Enum.TextTruncate.AtEnd
 					status.TextXAlignment = Enum.TextXAlignment.Left
@@ -6432,7 +6444,7 @@ function Chloex:Window(guiconfig)
 					statussub.Name = "RowStatusSub"
 					statussub.FontFace = FONT_MEDIUM
 					statussub.TextColor3 = theme.Dim
-					statussub.TextSize = 11
+					statussub.TextSize = ts(11)
 					statussub.RichText = true
 					statussub.TextTruncate = Enum.TextTruncate.AtEnd
 					statussub.TextXAlignment = Enum.TextXAlignment.Left
@@ -6443,7 +6455,7 @@ function Chloex:Window(guiconfig)
 					local action = instance.textbutton(row)
 					action.Name = "RowAction"
 					action.FontFace = FONT_BOLD
-					action.TextSize = 12
+					action.TextSize = ts(12)
 					action.AutoButtonColor = false
 					action.Text = "Go"
 					action.TextColor3 = theme.AccentText
@@ -6633,7 +6645,7 @@ function Chloex:Window(guiconfig)
 				title.FontFace = FONT_BOLD
 				title.Text = tostring(listconfig.Title)
 				title.TextColor3 = theme.Text
-				title.TextSize = 13
+				title.TextSize = ts(13)
 				title.TextTruncate = Enum.TextTruncate.AtEnd
 				title.TextXAlignment = Enum.TextXAlignment.Left
 				title.TextYAlignment = Enum.TextYAlignment.Top
@@ -6674,7 +6686,7 @@ function Chloex:Window(guiconfig)
 				resettext.Size = UDim2.new(0, 0, 1, 0)
 				resettext.Text = tostring(listconfig.ResetText or "Reset")
 				resettext.TextColor3 = theme.SubText
-				resettext.TextSize = 12
+				resettext.TextSize = ts(12)
 				hoverbg(reset, resetbg, theme.Inner, theme.InnerHover)
 
 				local bodytop = headerheight
@@ -6732,7 +6744,7 @@ function Chloex:Window(guiconfig)
 					ranktext.Size = UDim2.new(1, 0, 1, 0)
 					ranktext.Text = ""
 					ranktext.TextColor3 = theme.Text
-					ranktext.TextSize = 11
+					ranktext.TextSize = ts(11)
 					local lockicon = instance.imagelabel(badge)
 					lockicon.AnchorPoint = Vector2.new(0.5, 0.5)
 					lockicon.BackgroundTransparency = 1
@@ -6767,7 +6779,7 @@ function Chloex:Window(guiconfig)
 					name.Size = UDim2.new(1, -(textx + rightinset), 0, 15)
 					name.Text = tostring(item.Title or id)
 					name.TextColor3 = theme.Text
-					name.TextSize = 12
+					name.TextSize = ts(12)
 					name.TextTruncate = Enum.TextTruncate.AtEnd
 					name.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -6786,7 +6798,7 @@ function Chloex:Window(guiconfig)
 					status.Size = UDim2.new(1, -(textx + rightinset), 0, 13)
 					status.Text = tostring(item.Sub or "")
 					status.TextColor3 = theme.Dim
-					status.TextSize = 11
+					status.TextSize = ts(11)
 					status.TextTruncate = Enum.TextTruncate.AtEnd
 					status.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -6894,7 +6906,7 @@ function Chloex:Window(guiconfig)
 				emptyrow.Size = UDim2.new(1, 0, 0, rowheight)
 				emptyrow.Text = tostring(listconfig.EmptyText or "Nothing here yet.")
 				emptyrow.TextColor3 = theme.Dim
-				emptyrow.TextSize = 12
+				emptyrow.TextSize = ts(12)
 				emptyrow.TextWrapped = true
 				emptyrow.Visible = false
 
@@ -7126,7 +7138,7 @@ function Chloex:Window(guiconfig)
 					local b = instance.textbutton(button)
 					b.FontFace = FONT_BOLD
 					b.Text = tostring(text)
-					b.TextSize = 12
+					b.TextSize = ts(12)
 					b.TextColor3 = facetext
 					b.TextTruncate = Enum.TextTruncate.AtEnd
 					b.AutoButtonColor = false
@@ -7153,7 +7165,7 @@ function Chloex:Window(guiconfig)
 					title.FontFace = FONT_BOLD
 					title.Text = tostring(buttonconfig.Title)
 					title.TextColor3 = theme.Text
-					title.TextSize = 13
+					title.TextSize = ts(13)
 					title.TextTruncate = Enum.TextTruncate.AtEnd
 					title.TextXAlignment = Enum.TextXAlignment.Left
 					title.TextYAlignment = Enum.TextYAlignment.Top
@@ -7795,7 +7807,7 @@ function Chloex:Window(guiconfig)
 				local inputtitle = instance.textlabel(inputcontainer)
 				inputtitle.FontFace = FONT_BOLD
 				inputtitle.Text = inputconfig.Title
-				inputtitle.TextSize = 13
+				inputtitle.TextSize = ts(13)
 				inputtitle.TextColor3 = theme.Text
 				inputtitle.TextTruncate = Enum.TextTruncate.AtEnd
 				inputtitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -7808,7 +7820,7 @@ function Chloex:Window(guiconfig)
 				inputtextbox.PlaceholderText = inputconfig.Placeholder
 				inputtextbox.PlaceholderColor3 = theme.Dim
 				inputtextbox.Text = inputfunc.Value
-				inputtextbox.TextSize = 12
+				inputtextbox.TextSize = ts(12)
 				inputtextbox.TextColor3 = theme.Text
 				inputtextbox.BackgroundColor3 = theme.Field
 				inputtextbox.BackgroundTransparency = 0
@@ -8082,7 +8094,7 @@ function Chloex:Window(guiconfig)
 				dropdowntitle.FontFace = FONT_BOLD
 				dropdowntitle.Text = dropdownconfig.Title
 				dropdowntitle.TextColor3 = theme.Text
-				dropdowntitle.TextSize = 13
+				dropdowntitle.TextSize = ts(13)
 				dropdowntitle.TextTruncate = Enum.TextTruncate.AtEnd
 				dropdowntitle.TextXAlignment = Enum.TextXAlignment.Left
 				dropdowntitle.BackgroundTransparency = 1
@@ -8107,7 +8119,7 @@ function Chloex:Window(guiconfig)
 				optionselecting.FontFace = FONT_BOLD
 				optionselecting.Text = dropdownconfig.Multi and "Select Options" or "Select Option"
 				optionselecting.TextColor3 = theme.Text
-				optionselecting.TextSize = 12
+				optionselecting.TextSize = ts(12)
 				optionselecting.TextTransparency = 0.55
 				optionselecting.TextTruncate = Enum.TextTruncate.AtEnd
 				optionselecting.TextXAlignment = Enum.TextXAlignment.Left
@@ -8158,7 +8170,7 @@ function Chloex:Window(guiconfig)
 				searchbox.PlaceholderColor3 = theme.Dim
 				searchbox.FontFace = FONT_MEDIUM
 				searchbox.Text = ""
-				searchbox.TextSize = 12
+				searchbox.TextSize = ts(12)
 				searchbox.TextColor3 = theme.Text
 				searchbox.TextXAlignment = Enum.TextXAlignment.Left
 				searchbox.TextTruncate = Enum.TextTruncate.AtEnd
@@ -8344,7 +8356,7 @@ function Chloex:Window(guiconfig)
 						optiondesc.Name = "OptionDesc"
 						optiondesc.FontFace = FONT_BOLD
 						optiondesc.Text = tostring(entry.desc)
-						optiondesc.TextSize = 10
+						optiondesc.TextSize = ts(10)
 						optiondesc.TextTransparency = 0.3
 						optiondesc.TextColor3 = Color3.fromRGB(255, 255, 255)
 						optiondesc.Position = UDim2.new(0, textX, 0, 11)
@@ -8570,7 +8582,7 @@ function Chloex:Window(guiconfig)
 				label.FontFace = FONT_BOLD
 				label.Text = string.upper(tostring(sectiontext))
 				label.TextColor3 = theme.Dim
-				label.TextSize = 11
+				label.TextSize = ts(11)
 				label.TextTransparency = 0.35
 				label.TextTruncate = Enum.TextTruncate.AtEnd
 				label.TextXAlignment = Enum.TextXAlignment.Left
@@ -9317,7 +9329,7 @@ function Chloex:Window(guiconfig)
 					label.Size = UDim2.new(0, 0, 1, 0)
 					label.Text = text
 					label.TextColor3 = color or theme.Dim
-					label.TextSize = 11
+					label.TextSize = ts(11)
 					return frame, label
 				end
 
@@ -9357,7 +9369,7 @@ function Chloex:Window(guiconfig)
 					label.Size = UDim2.new(0, 0, 1, 0)
 					label.Text = text
 					label.TextColor3 = ink
-					label.TextSize = 12
+					label.TextSize = ts(12)
 					local enabled = true
 					b.MouseEnter:Connect(function()
 						if enabled then
@@ -9411,7 +9423,7 @@ function Chloex:Window(guiconfig)
 				title.Size = UDim2.new(1, -250, 0, 16)
 				title.Text = tostring(forumconfig.Title or "Community Setups")
 				title.TextColor3 = theme.Text
-				title.TextSize = 13
+				title.TextSize = ts(13)
 				title.TextTruncate = Enum.TextTruncate.AtEnd
 				title.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -9423,7 +9435,7 @@ function Chloex:Window(guiconfig)
 				subtitle.Size = UDim2.new(1, -250, 0, 14)
 				subtitle.Text = "Loading..."
 				subtitle.TextColor3 = theme.Dim
-				subtitle.TextSize = 11
+				subtitle.TextSize = ts(11)
 				subtitle.TextTruncate = Enum.TextTruncate.AtEnd
 				subtitle.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -9486,7 +9498,7 @@ function Chloex:Window(guiconfig)
 					label.Size = UDim2.new(0, 0, 1, 0)
 					label.Text = text
 					label.TextColor3 = theme.SubText
-					label.TextSize = 11
+					label.TextSize = ts(11)
 					sortchips[key] = { frame = b, label = label }
 					return b
 				end
@@ -9506,7 +9518,7 @@ function Chloex:Window(guiconfig)
 				search.Size = UDim2.new(0.4, -40, 0, 26)
 				search.Text = ""
 				search.TextColor3 = theme.Text
-				search.TextSize = 12
+				search.TextSize = ts(12)
 				search.TextTruncate = Enum.TextTruncate.AtEnd
 				search.TextXAlignment = Enum.TextXAlignment.Left
 				instance.uicorner(search).CornerRadius = UDim.new(0, 5)
@@ -9545,7 +9557,7 @@ function Chloex:Window(guiconfig)
 				bannertext.Size = UDim2.new(1, -120, 1, 0)
 				bannertext.Text = ""
 				bannertext.TextColor3 = theme.SubText
-				bannertext.TextSize = 12
+				bannertext.TextSize = ts(12)
 				bannertext.TextTruncate = Enum.TextTruncate.AtEnd
 				bannertext.TextXAlignment = Enum.TextXAlignment.Left
 				bannertext.ZIndex = 4
@@ -9642,7 +9654,7 @@ function Chloex:Window(guiconfig)
 				emptytext.Size = UDim2.new(1, -20, 0, 30)
 				emptytext.Text = "Loading setups..."
 				emptytext.TextColor3 = theme.Dim
-				emptytext.TextSize = 12
+				emptytext.TextSize = ts(12)
 				emptytext.TextWrapped = true
 				local emptyshare = button(emptybox, "Share my setup", "primary", "share-2")
 				emptyshare.frame.AnchorPoint = Vector2.new(0.5, 0)
@@ -9718,7 +9730,7 @@ function Chloex:Window(guiconfig)
 					label.Size = UDim2.new(1, -30, 1, 0)
 					label.Text = text
 					label.TextColor3 = theme.Text
-					label.TextSize = 14
+					label.TextSize = ts(14)
 					label.TextTruncate = Enum.TextTruncate.AtEnd
 					label.TextXAlignment = Enum.TextXAlignment.Left
 					label.ZIndex = 31
@@ -9744,7 +9756,7 @@ function Chloex:Window(guiconfig)
 					label.Size = UDim2.new(1, 0, 0, 0)
 					label.Text = text
 					label.TextColor3 = color or theme.SubText
-					label.TextSize = size or 12
+					label.TextSize = ts(size or 12)
 					label.TextWrapped = true
 					label.TextXAlignment = Enum.TextXAlignment.Left
 					label.ZIndex = 31
@@ -9829,7 +9841,7 @@ function Chloex:Window(guiconfig)
 						label.Size = UDim2.new(1, -34, 1, 0)
 						label.Text = option
 						label.TextColor3 = option == current and theme.Text or theme.SubText
-						label.TextSize = 12
+						label.TextSize = ts(12)
 						label.TextTruncate = Enum.TextTruncate.AtEnd
 						label.TextXAlignment = Enum.TextXAlignment.Left
 						label.ZIndex = 42
@@ -9880,7 +9892,7 @@ function Chloex:Window(guiconfig)
 				titlebox.Size = UDim2.new(1, 0, 1, 0)
 				titlebox.Text = ""
 				titlebox.TextColor3 = theme.Text
-				titlebox.TextSize = 12
+				titlebox.TextSize = ts(12)
 				titlebox.TextXAlignment = Enum.TextXAlignment.Left
 				titlebox.ZIndex = 32
 				instance.uicorner(titlebox).CornerRadius = UDim.new(0, 6)
@@ -9895,7 +9907,7 @@ function Chloex:Window(guiconfig)
 				titlecount.Size = UDim2.new(0, 40, 0, 14)
 				titlecount.Text = "0/48"
 				titlecount.TextColor3 = theme.Dim
-				titlecount.TextSize = 10
+				titlecount.TextSize = ts(10)
 				titlecount.TextXAlignment = Enum.TextXAlignment.Right
 				titlecount.ZIndex = 33
 				titlebox:GetPropertyChangedSignal("Text"):Connect(function()
@@ -9944,7 +9956,7 @@ function Chloex:Window(guiconfig)
 				namelabel.Size = UDim2.new(1, -50, 0, 16)
 				namelabel.Text = "Show my name on the post"
 				namelabel.TextColor3 = theme.Text
-				namelabel.TextSize = 12
+				namelabel.TextSize = ts(12)
 				namelabel.TextXAlignment = Enum.TextXAlignment.Left
 				namelabel.ZIndex = 33
 				local namesub = instance.textlabel(namerow2)
@@ -9954,7 +9966,7 @@ function Chloex:Window(guiconfig)
 				namesub.Size = UDim2.new(1, -50, 0, 14)
 				namesub.Text = "Off: the post shows a masked name"
 				namesub.TextColor3 = theme.Dim
-				namesub.TextSize = 11
+				namesub.TextSize = ts(11)
 				namesub.TextXAlignment = Enum.TextXAlignment.Left
 				namesub.ZIndex = 33
 				local track = instance.frame(namerow2)
@@ -10211,7 +10223,7 @@ function Chloex:Window(guiconfig)
 					label.Size = UDim2.new(1, -34, 1, 0)
 					label.Text = post.reported and "Reported" or "Report this post"
 					label.TextColor3 = post.reported and theme.Dim or theme.Text
-					label.TextSize = 12
+					label.TextSize = ts(12)
 					label.TextTruncate = Enum.TextTruncate.AtEnd
 					label.TextXAlignment = Enum.TextXAlignment.Left
 					label.ZIndex = 32
@@ -10278,7 +10290,7 @@ function Chloex:Window(guiconfig)
 					badge.Size = UDim2.new(0, 30, 0, 20)
 					badge.Text = rank > 0 and ("#" .. rank) or "-"
 					badge.TextColor3 = rankcolors[rank] and theme.AccentText or theme.SubText
-					badge.TextSize = 11
+					badge.TextSize = ts(11)
 					instance.uicorner(badge).CornerRadius = UDim.new(1, 0)
 
 					local like = button(top, "", "ghost", "heart")
@@ -10299,7 +10311,7 @@ function Chloex:Window(guiconfig)
 					posttitle.Size = UDim2.new(1, -110, 1, 0)
 					posttitle.Text = tostring(post.title or "Untitled setup")
 					posttitle.TextColor3 = theme.Text
-					posttitle.TextSize = 13
+					posttitle.TextSize = ts(13)
 					posttitle.TextTruncate = Enum.TextTruncate.AtEnd
 					posttitle.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -10316,7 +10328,7 @@ function Chloex:Window(guiconfig)
 					end
 					meta.Text = metatext
 					meta.TextColor3 = theme.Dim
-					meta.TextSize = 11
+					meta.TextSize = ts(11)
 					meta.TextTruncate = Enum.TextTruncate.AtEnd
 					meta.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -10348,7 +10360,7 @@ function Chloex:Window(guiconfig)
 					summaryline.Size = UDim2.new(1, 0, 0, 16)
 					summaryline.Text = short
 					summaryline.TextColor3 = theme.SubText
-					summaryline.TextSize = 12
+					summaryline.TextSize = ts(12)
 					summaryline.TextTruncate = Enum.TextTruncate.AtEnd
 					summaryline.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -10362,7 +10374,7 @@ function Chloex:Window(guiconfig)
 					details.Size = UDim2.new(1, 0, 0, 0)
 					details.Text = ""
 					details.TextColor3 = theme.SubText
-					details.TextSize = 12
+					details.TextSize = ts(12)
 					details.TextWrapped = true
 					details.TextXAlignment = Enum.TextXAlignment.Left
 					details.TextYAlignment = Enum.TextYAlignment.Top
