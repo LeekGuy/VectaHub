@@ -4628,42 +4628,56 @@ function Chloex:Window(guiconfig)
 
 	makedraggable(top, dropshadowholder)
 
-	-- Window tilt. Roblox GUI has no real 3D perspective, so the tilt is faked with
-	-- depth cues that follow the mouse / finger: the window slides a few pixels
-	-- toward the pointer, a soft glare band sweeps across it, and the edge facing
-	-- the pointer lights up. Window options:
+	-- Window press-tilt. Roblox GUI has no real 3D perspective, so the "weight" at the
+	-- touch point is faked: while the mouse button / a finger is held on the window,
+	-- the window sinks toward that exact point (it scales about the point, which
+	-- stays under the finger), the side being pressed darkens and the raised side
+	-- catches light. The point is read every frame, so fast swipes are followed.
+	-- Hovering without pressing does nothing. Window options:
 	--   Tilt         = false  turns the whole effect off (default on)
-	--   TiltStrength = 0..2   how far it moves, default 1
-	--   TiltGlare    = false  drops the glare band and the edge light
+	--   TiltStrength = 0..2   how deep the press goes, default 1
+	--   TiltGlare    = false  drops the shading, light and edge highlight
 	--   TiltRotate   = 0..3   degrees of real rotation, default 0 (off). Roblox does
 	--                         not clip children properly inside a rotated frame,
 	--                         so keep this small or at 0.
 	if guiconfig.Tilt ~= false then
-		local tiltstrength = math.clamp(tonumber(guiconfig.TiltStrength) or 1, 0, 2)
-		local tiltrotate = math.clamp(tonumber(guiconfig.TiltRotate) or 0, 0, 3)
-		local tiltmove = 3 * tiltstrength
+		local strength = math.clamp(tonumber(guiconfig.TiltStrength) or 1, 0, 2)
+		local rotate = math.clamp(tonumber(guiconfig.TiltRotate) or 0, 0, 3)
 		local runservice = game:GetService("RunService")
+		local maincorner = main:FindFirstChildOfClass("UICorner")
 
-		local glaregradient, edgegradient
-		if guiconfig.TiltGlare ~= false then
-			local glare = instance.frame(main)
-			glare.Name = "TiltGlare"
-			glare.Active = false
-			glare.BackgroundColor3 = Color3.new(1, 1, 1)
-			glare.BackgroundTransparency = 0
-			glare.BorderSizePixel = 0
-			glare.Size = UDim2.new(1, 0, 1, 0)
-			glare.ZIndex = 10
-			local maincorner = main:FindFirstChildOfClass("UICorner")
-			local glarecorner = instance.uicorner(glare)
+		-- the press itself: UIScale on the window holder (scales about its centre)
+		local presscale = instance.uiscale(dropshadowholder)
+		presscale.Name = "PressScale"
+		presscale.Scale = 1
+
+		local function makeoverlay(name, color)
+			local frame = instance.frame(main)
+			frame.Name = name
+			frame.Active = false
+			pcall(function()
+				frame.Interactable = false
+			end)
+			frame.BackgroundColor3 = color
+			frame.BackgroundTransparency = 0
+			frame.BorderSizePixel = 0
+			frame.Size = UDim2.new(1, 0, 1, 0)
+			frame.ZIndex = 10
+			frame.Visible = false
+			local corner = instance.uicorner(frame)
 			if maincorner then
-				glarecorner.CornerRadius = maincorner.CornerRadius
+				corner.CornerRadius = maincorner.CornerRadius
 			end
-			glaregradient = instance.uigradient(glare)
-			glaregradient.Rotation = 20
-			glaregradient.Transparency = NumberSequence.new(1)
+			local gradient = instance.uigradient(frame)
+			gradient.Transparency = NumberSequence.new(1)
+			return frame, gradient
+		end
 
-			local edge = instance.uistroke(glare)
+		local shade, shadegradient, light, lightgradient, edge, edgegradient
+		if guiconfig.TiltGlare ~= false then
+			shade, shadegradient = makeoverlay("TiltShade", Color3.new(0, 0, 0))
+			light, lightgradient = makeoverlay("TiltLight", Color3.new(1, 1, 1))
+			edge = instance.uistroke(light)
 			edge.Color = Color3.new(1, 1, 1)
 			edge.Thickness = 1
 			edge.Transparency = 0
@@ -4671,53 +4685,75 @@ function Chloex:Window(guiconfig)
 			edgegradient.Transparency = NumberSequence.new(1)
 		end
 
-		-- target (tx, ty, ti) and smoothed (cx, cy, ci) pointer offset: x and y in
-		-- -1..1 from the window centre, i the strength (fades out away from the window)
+		local pressing = false
+		local active = nil
+		local pointer = Vector2.new(0, 0)
+		-- tx, ty: last pressed point (-1..1 from the window centre), ti: 1 while pressed
 		local tx, ty, ti = 0, 0, 0
 		local cx, cy, ci = 0, 0, 0
-		local px, py, pi = 0, 0, 0
+		local lastscale = 1
+		local settled = true
 
-		local function aim(pos)
-			local size = dropshadowholder.AbsoluteSize
-			if size.X < 1 or size.Y < 1 then
-				return
-			end
-			local center = dropshadowholder.AbsolutePosition + size / 2
-			local nx = (pos.X - center.X) / (size.X / 2)
-			local ny = (pos.Y - center.Y) / (size.Y / 2)
-			local k = math.clamp(2 - math.max(math.abs(nx), math.abs(ny)), 0, 1)
-			tx = math.clamp(nx, -1, 1) * k
-			ty = math.clamp(ny, -1, 1) * k
-			ti = k
+		local function isclick(input)
+			return input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch
 		end
 
-		local function rest()
-			tx, ty, ti = 0, 0, 0
+		-- window rect as it is at rest (the press scale is divided back out)
+		local function restrect()
+			local size = dropshadowholder.AbsoluteSize / math.max(0.01, lastscale)
+			local center = dropshadowholder.AbsolutePosition + dropshadowholder.AbsoluteSize / 2
+			return center, size / 2
 		end
 
 		trackConnection(
+			sv.uis.InputBegan:Connect(function(input)
+				if pressing or not isclick(input) or not dropshadowholder.Visible then
+					return
+				end
+				local center, half = restrect()
+				if half.X < 1 or half.Y < 1 then
+					return
+				end
+				local pos = input.Position
+				if math.abs(pos.X - center.X) > half.X or math.abs(pos.Y - center.Y) > half.Y then
+					return
+				end
+				pressing = true
+				active = input
+				pointer = Vector2.new(pos.X, pos.Y)
+			end),
+			"tilt.InputBegan"
+		)
+		trackConnection(
 			sv.uis.InputChanged:Connect(function(input)
-				if
-					input.UserInputType == Enum.UserInputType.MouseMovement
-					or input.UserInputType == Enum.UserInputType.Touch
-				then
-					aim(input.Position)
+				if not pressing then
+					return
+				end
+				if active.UserInputType == Enum.UserInputType.Touch then
+					if input == active then
+						pointer = Vector2.new(input.Position.X, input.Position.Y)
+					end
+				elseif input.UserInputType == Enum.UserInputType.MouseMovement then
+					pointer = Vector2.new(input.Position.X, input.Position.Y)
 				end
 			end),
 			"tilt.InputChanged"
 		)
 		trackConnection(
-			sv.uis.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.Touch then
-					aim(input.Position)
-				end
-			end),
-			"tilt.InputBegan"
-		)
-		trackConnection(
 			sv.uis.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.Touch then
-					rest()
+				if not pressing then
+					return
+				end
+				if
+					input == active
+					or (
+						active.UserInputType == Enum.UserInputType.MouseButton1
+						and input.UserInputType == Enum.UserInputType.MouseButton1
+					)
+				then
+					pressing = false
+					active = nil
 				end
 			end),
 			"tilt.InputEnded"
@@ -4728,47 +4764,83 @@ function Chloex:Window(guiconfig)
 				if not dropshadowholder.Visible then
 					return
 				end
-				if draggable.resizing then
-					rest()
+
+				if pressing and not draggable.resizing then
+					local center, half = restrect()
+					tx = math.clamp((pointer.X - center.X) / math.max(1, half.X), -1, 1)
+					ty = math.clamp((pointer.Y - center.Y) / math.max(1, half.Y), -1, 1)
+					ti = 1
+				else
+					-- let go: ease out from the last pressed point, not toward the centre
+					ti = 0
 				end
-				local a = 1 - math.exp(-dt * 14)
+
+				if settled and ti == 0 then
+					return
+				end
+
+				local a = 1 - math.exp(-dt * 26)
 				cx = cx + (tx - cx) * a
 				cy = cy + (ty - cy) * a
 				ci = ci + (ti - ci) * a
-				-- nothing moved: leave the frames alone
-				if math.abs(cx - px) < 0.002 and math.abs(cy - py) < 0.002 and math.abs(ci - pi) < 0.002 then
+
+				if ti == 0 and ci < 0.003 then
+					-- back at rest: restore the exact untilted look
+					ci = 0
+					settled = true
+					presscale.Scale = 1
+					lastscale = 1
+					main.Position = UDim2.new(0.5, 0, 0.5, 0)
+					dropshadowholder.Rotation = 0
+					if shade then
+						shade.Visible = false
+						light.Visible = false
+					end
 					return
 				end
-				px, py, pi = cx, cy, ci
+				settled = false
 
-				-- whole pixels keep the pixel font crisp
-				main.Position = UDim2.new(
-					0.5,
-					math.floor(cx * tiltmove + 0.5),
-					0.5,
-					math.floor(cy * tiltmove + 0.5)
-				)
-				if tiltrotate > 0 then
-					dropshadowholder.Rotation = cx * tiltrotate
+				local mag = math.min(1, math.sqrt(cx * cx + cy * cy))
+				local depth = (0.010 + 0.026 * mag) * strength * ci
+				local scale = math.floor((1 - depth) * 1000 + 0.5) / 1000
+
+				-- scale about the pressed point: UIScale scales about the centre, so the
+				-- window content is shifted to keep that point under the finger
+				local _, half = restrect()
+				if scale ~= lastscale then
+					presscale.Scale = scale
+				end
+				local k = (1 - scale) / scale
+				main.Position = UDim2.new(0.5, cx * half.X * k, 0.5, cy * half.Y * k)
+				lastscale = scale
+				if rotate > 0 then
+					dropshadowholder.Rotation = cx * rotate * ci
 				end
 
-				if glaregradient then
-					local level = 1 - 0.09 * math.min(1, tiltstrength) * ci
-					glaregradient.Offset = Vector2.new(cx * 0.6, 0)
-					glaregradient.Rotation = 20 + cy * 15
-					glaregradient.Transparency = NumberSequence.new({
+				if shade then
+					local level = math.min(1, strength) * ci
+					local angle = math.deg(math.atan2(cy, cx))
+					shade.Visible = true
+					light.Visible = true
+					shadegradient.Rotation = angle
+					lightgradient.Rotation = angle
+					edgegradient.Rotation = angle
+					-- t = 1 is toward the pressed point: that side darkens
+					shadegradient.Transparency = NumberSequence.new({
 						NumberSequenceKeypoint.new(0, 1),
 						NumberSequenceKeypoint.new(0.3, 1),
-						NumberSequenceKeypoint.new(0.5, level),
-						NumberSequenceKeypoint.new(0.7, 1),
+						NumberSequenceKeypoint.new(1, math.max(0.5, 1 - (0.05 + 0.25 * mag) * level)),
+					})
+					-- t = 0 is the raised side: it catches light
+					lightgradient.Transparency = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 1 - 0.11 * mag * level),
+						NumberSequenceKeypoint.new(0.5, 1),
 						NumberSequenceKeypoint.new(1, 1),
 					})
-					local mag = math.min(1, math.sqrt(cx * cx + cy * cy))
-					edgegradient.Rotation = math.deg(math.atan2(cy, cx))
 					edgegradient.Transparency = NumberSequence.new({
-						NumberSequenceKeypoint.new(0, 1),
-						NumberSequenceKeypoint.new(0.45, 1),
-						NumberSequenceKeypoint.new(1, 1 - 0.55 * math.min(1, tiltstrength) * mag * ci),
+						NumberSequenceKeypoint.new(0, 1 - 0.6 * mag * level),
+						NumberSequenceKeypoint.new(0.55, 1),
+						NumberSequenceKeypoint.new(1, 1),
 					})
 				end
 			end),
