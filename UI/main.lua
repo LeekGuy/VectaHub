@@ -5372,7 +5372,15 @@ function Chloex:Window(guiconfig)
 		elevate()
 		fcfg = type(fcfg) == "table" and fcfg or {}
 		local istoggle = kind == "toggle"
-		local title = tostring(fcfg.Title or fcfg.Name or fcfg.Text or (istoggle and "Toggle" or "Button"))
+		-- Link = an existing toggle (the one AddToggle returned): both stay in sync
+		local linked = fcfg.Link or fcfg.LinkTo or fcfg.Toggle
+		if type(linked) ~= "table" or type(linked.Set) ~= "function" or type(linked.OnChanged) ~= "function" then
+			linked = nil
+		end
+		if not istoggle then
+			linked = nil
+		end
+		local title = tostring(fcfg.Title or fcfg.Name or fcfg.Text or (linked and linked.Title) or (istoggle and "Toggle" or "Button"))
 		local callback = fcfg.Callback or function() end
 		floating.count = floating.count + 1
 		local index = floating.count
@@ -5384,7 +5392,12 @@ function Chloex:Window(guiconfig)
 		-- toggles join the config like every other toggle (saved / loaded / reset)
 		local configkey = nil
 		local hubdefault = fcfg.Default and true or false
-		if istoggle then
+		if linked then
+			-- the linked toggle owns the value and its saved config
+			item.Value = linked.Value == true
+			hubdefault = item.Value
+			item.DefaultValue = linked.DefaultValue == true
+		elseif istoggle then
 			configkey = keyfor("Toggle_", { Flag = fcfg.Flag or ("Float " .. title) })
 			item.DefaultValue = hubdefault
 			local saved = config.data[configkey]
@@ -5631,6 +5644,11 @@ function Chloex:Window(guiconfig)
 			if a == item then
 				instant = c
 			end
+			if linked then
+				-- the linked toggle applies it, then calls back into this one
+				linked:Set(value and true or false, instant == true)
+				return
+			end
 			item.Value = value and true or false
 			if configkey then
 				config.data[configkey] = item.Value
@@ -5800,6 +5818,21 @@ function Chloex:Window(guiconfig)
 			config.elements[configkey] = item
 		end
 		floating.list[#floating.list + 1] = item
+		if linked then
+			linked:OnChanged(function(value)
+				if not root.Parent then
+					return
+				end
+				item.Value = value == true
+				render(false)
+				if fcfg.Callback then
+					local ok, err = pcall(callback, item.Value)
+					if not ok then
+						warn("FloatingToggle Callback error (" .. title .. "):", err)
+					end
+				end
+			end)
+		end
 		render(true)
 		task.defer(function()
 			if root.Parent then
@@ -5807,7 +5840,7 @@ function Chloex:Window(guiconfig)
 				root.Position = UDim2.new(0, cx, 0, cy)
 			end
 		end)
-		if istoggle then
+		if istoggle and not linked then
 			elevate()
 			local ok, err = pcall(callback, item.Value)
 			if not ok then
@@ -7804,7 +7837,16 @@ function Chloex:Window(guiconfig)
 				local lockable = tabgated or isdonatorelement(toggleconfig)
 				local donatoronly = (tabgated and keygatedonator) or isdonatoronly(toggleconfig)
 				local islocked = lockable and not tierallows(donatoronly)
-				local togglefunc = { Value = false, DefaultValue = hubdefault }
+				local togglefunc = { Value = false, DefaultValue = hubdefault, Title = toggleconfig.Title, Listeners = {} }
+
+				-- toggle:OnChanged(function(value) end): runs on every change of this toggle
+				-- (clicks, keybind, config load, :Set). Floating toggles use it to stay in sync.
+				function togglefunc:OnChanged(fn)
+					if type(fn) == "function" then
+						table.insert(togglefunc.Listeners, fn)
+					end
+					return togglefunc
+				end
 
 				local toggle = templates.Toggle:Clone()
 				toggle.LayoutOrder = countitem
@@ -8101,6 +8143,12 @@ function Chloex:Window(guiconfig)
 				local function apply(value, instant, save, fire)
 					elevate()
 					togglefunc.Value = value
+					for _, listener in ipairs(togglefunc.Listeners) do
+						task.spawn(function()
+							elevate()
+							pcall(listener, value)
+						end)
+					end
 					if save then
 						config.data[configkey] = value
 						config:queuesave()
