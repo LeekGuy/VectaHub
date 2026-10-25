@@ -5442,7 +5442,8 @@ function Chloex:Window(guiconfig)
 		label.Text = title
 		label.TextColor3 = theme.Text
 		label.TextSize = ts(12)
-		label.TextTruncate = Enum.TextTruncate.AtEnd
+		label.TextTruncate = Enum.TextTruncate.None
+		label.TextWrapped = false
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.ZIndex = 2
 
@@ -5510,7 +5511,8 @@ function Chloex:Window(guiconfig)
 				icon.Position = UDim2.new(0, x, 0.5, 0)
 				x = x + 14 + 6
 			end
-			local w = math.min(220, textwidth(label.Text, 12, FONT_BOLD) + 2)
+			-- fit the real rendered text (TextBounds), the estimate is only the fallback
+			local w = math.max(textwidth(label.Text, 12, FONT_BOLD), math.ceil(label.TextBounds.X)) + 4
 			label.Position = UDim2.new(0, x, 0, 0)
 			label.Size = UDim2.new(0, w, 1, 0)
 			x = x + w + 8
@@ -5538,6 +5540,7 @@ function Chloex:Window(guiconfig)
 			relayout()
 		end
 		seticonname(fcfg.Icon)
+		label:GetPropertyChangedSignal("TextBounds"):Connect(relayout)
 
 		-- default spot: the right edge of the screen, each new one lands further down
 		if not saved and typeof(fcfg.Position) ~= "UDim2" then
