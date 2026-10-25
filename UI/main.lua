@@ -488,6 +488,7 @@ if getgenv().ChloeX_Running then
 			"OverlayGui",
 			"NotifyGui",
 			"AnnounceGui",
+			"FloatingGui",
 		}) do
 			local old = sv.coregui:FindFirstChild(name)
 			if old then
@@ -4090,7 +4091,7 @@ function Chloex:Window(guiconfig)
 
 		-- overlays and notifications belong to this instance too, so they go with it
 		for _, child in ipairs(sv.coregui:GetChildren()) do
-			if child.Name == "OverlayGui" or child.Name == "NotifyGui" then
+			if child.Name == "OverlayGui" or child.Name == "NotifyGui" or child.Name == "FloatingGui" then
 				pcall(function()
 					child:Destroy()
 				end)
@@ -4637,7 +4638,9 @@ function Chloex:Window(guiconfig)
 	--   EdgeGlowStrength = 0..1   how bright the border gets, default 0.85
 	--   EdgeGlowColor    = Color3 glow color, default the window Color
 	--   EdgeGlowWidth    = 1..3   border thickness in pixels, default 1.5
+	--   EdgeGlowDelay    = seconds the window must be held before the border shows, default 3
 	if guiconfig.EdgeGlow ~= false then
+		local glowdelay = math.max(0, tonumber(guiconfig.EdgeGlowDelay) or 3)
 		local glowstrength = math.clamp(tonumber(guiconfig.EdgeGlowStrength) or 0.85, 0, 1)
 		local glowwidth = math.clamp(tonumber(guiconfig.EdgeGlowWidth) or 1.5, 1, 3)
 		local glowcolor = typeof(guiconfig.EdgeGlowColor) == "Color3" and guiconfig.EdgeGlowColor
@@ -4669,6 +4672,7 @@ function Chloex:Window(guiconfig)
 		glowgradient.Transparency = NumberSequence.new(1)
 
 		local pressing = false
+		local pressat = 0
 		local active = nil
 		local pointer = Vector2.new(0, 0)
 		-- tx, ty: last touched point (-1..1 from the window centre), ti: 1 while pressed
@@ -4702,6 +4706,7 @@ function Chloex:Window(guiconfig)
 				end
 				pressing = true
 				active = input
+				pressat = os.clock()
 				pointer = Vector2.new(pos.X, pos.Y)
 			end),
 			"edgeglow.InputBegan"
@@ -4750,20 +4755,25 @@ function Chloex:Window(guiconfig)
 					local center, half = rect()
 					tx = math.clamp((pointer.X - center.X) / math.max(1, half.X), -1, 1)
 					ty = math.clamp((pointer.Y - center.Y) / math.max(1, half.Y), -1, 1)
-					ti = 1
+					-- the border only starts to show once the press has lasted EdgeGlowDelay seconds
+					ti = (os.clock() - pressat >= glowdelay) and 1 or 0
 				else
 					-- let go: fade out where the touch was
 					ti = 0
 				end
 
 				if settled and ti == 0 then
+					-- keep the direction ready, so the border fades in right at the touch point
+					cx, cy = tx, ty
 					return
 				end
 
-				local a = 1 - math.exp(-dt * 30)
-				cx = cx + (tx - cx) * a
-				cy = cy + (ty - cy) * a
-				ci = ci + (ti - ci) * math.min(1, a * 0.8)
+				-- direction follows the touch softly, brightness fades in ~0.4s / out ~0.5s
+				local follow = 1 - math.exp(-dt * 14)
+				cx = cx + (tx - cx) * follow
+				cy = cy + (ty - cy) * follow
+				local fade = 1 - math.exp(-dt * (ti > ci and 7.5 or 6))
+				ci = ci + (ti - ci) * fade
 
 				if ti == 0 and ci < 0.01 then
 					ci = 0
@@ -4774,9 +4784,10 @@ function Chloex:Window(guiconfig)
 				settled = false
 
 				-- t = 1 of the gradient points toward the touch; the closer the touch
-				-- is to an edge, the brighter that edge gets
+				-- is to an edge, the brighter that edge gets. Smoothstep gives an ease in/out.
 				local mag = math.min(1, math.sqrt(cx * cx + cy * cy))
-				local level = glowstrength * ci * (0.3 + 0.7 * mag)
+				local eased = ci * ci * (3 - 2 * ci)
+				local level = glowstrength * eased * (0.3 + 0.7 * mag)
 				glow.Visible = true
 				glowgradient.Rotation = math.deg(math.atan2(cy, cx))
 				glowgradient.Transparency = NumberSequence.new({
@@ -5296,6 +5307,555 @@ function Chloex:Window(guiconfig)
 			lockfunc:Lock(true)
 		end
 		return lockfunc
+	end
+
+	-- ===== Floating Toggle / Floating Button =====
+	-- Small pills that float over the game, outside the window:
+	--   local t = Window:CreateFloatingToggle({ Title = "Auto Farm", Icon = "sprout", Default = false,
+	--       Flag = "FloatFarm", Callback = function(on) end })
+	--   local b = Window:CreateFloatingButton({ Title = "Rejoin", Icon = "refresh-cw", Callback = function() end })
+	-- Each one has a lock icon: locked = cannot be dragged, unlocked = drag it anywhere.
+	-- Item API (works with : or .):
+	--   :SetLocked(bool) / :SetDraggable(bool) / :IsLocked()   lock or free the drag
+	--   :SetVisible(bool) / :Show() / :Hide() / :IsVisible()   hide or show this one
+	--   :Set(bool) :GetValue() :SetTitle(text) :SetIcon(name) :SetPosition(x, y) :Destroy()
+	-- Window level: :SetFloatingVisible(bool) :ShowFloating() :HideFloating()
+	--               :SetFloatingLocked(bool) :SetFloatingDraggable(bool)
+	-- Position and lock state are remembered in Vecta/floating_positions.json.
+	local floating = { list = {}, count = 0, visible = true, gui = nil }
+	local FLOAT_POS_FILE = "Vecta/floating_positions.json"
+	local floatpos = {}
+	pcall(function()
+		if type(isfile) == "function" and type(readfile) == "function" and isfile(FLOAT_POS_FILE) then
+			local data = sv.http:JSONDecode(readfile(FLOAT_POS_FILE))
+			if type(data) == "table" then
+				floatpos = data
+			end
+		end
+	end)
+
+	local function savefloatpos()
+		debounceResize("floating_pos_save", function()
+			if type(writefile) ~= "function" then
+				return
+			end
+			local encoded = safeencode(floatpos)
+			if encoded then
+				pcall(writefile, FLOAT_POS_FILE, encoded)
+			end
+		end, 0.5)
+	end
+
+	local function floatgui()
+		if floating.gui and floating.gui.Parent then
+			return floating.gui
+		end
+		elevate()
+		local gui = instance.screengui(sv.coregui)
+		gui.Name = "FloatingGui"
+		gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		gui.ResetOnSpawn = false
+		gui.DisplayOrder = 10
+		floating.gui = gui
+		return gui
+	end
+
+	local function paintlockicon(img, locked)
+		local ok = applyicon(img, locked and "lock" or "lock-open", 48)
+		if not ok and not locked then
+			applyicon(img, "unlock", 48)
+		end
+		img.ImageColor3 = locked and theme.Gold or theme.SubText
+	end
+
+	local function buildfloating(kind, fcfg)
+		elevate()
+		fcfg = type(fcfg) == "table" and fcfg or {}
+		local istoggle = kind == "toggle"
+		local title = tostring(fcfg.Title or fcfg.Name or fcfg.Text or (istoggle and "Toggle" or "Button"))
+		local callback = fcfg.Callback or function() end
+		floating.count = floating.count + 1
+		local index = floating.count
+		local flag = tostring(fcfg.Flag or title)
+		local posname = kind .. ":" .. flag
+		local H = 34
+		local item = { Kind = kind, Value = false }
+
+		-- toggles join the config like every other toggle (saved / loaded / reset)
+		local configkey = nil
+		local hubdefault = fcfg.Default and true or false
+		if istoggle then
+			configkey = keyfor("Toggle_", { Flag = fcfg.Flag or ("Float " .. title) })
+			item.DefaultValue = hubdefault
+			local saved = config.data[configkey]
+			if saved ~= nil then
+				item.Value = saved == true
+			elseif config.loaded then
+				item.Value = false
+			else
+				item.Value = hubdefault
+			end
+		end
+
+		local saved = type(floatpos[posname]) == "table" and floatpos[posname] or nil
+		local locked = fcfg.Locked == true or fcfg.Draggable == false
+		if saved and type(saved.locked) == "boolean" then
+			locked = saved.locked
+		end
+		local shown = fcfg.Visible ~= false
+		local connections = {}
+
+		local root = instance.frame(floatgui())
+		root.Name = istoggle and "FloatingToggle" or "FloatingButton"
+		root.BackgroundColor3 = theme.Card
+		root.BorderSizePixel = 0
+		root.Size = UDim2.new(0, 120, 0, H)
+		root.Visible = shown and floating.visible
+		local startpos = UDim2.new(0, 20, 0, 150 + (index - 1) * (H + 8))
+		if typeof(fcfg.Position) == "UDim2" then
+			startpos = fcfg.Position
+		end
+		if saved and tonumber(saved.x) and tonumber(saved.y) then
+			startpos = UDim2.new(0, saved.x, 0, saved.y)
+		end
+		root.Position = startpos
+		-- same corner radius as the window itself
+		local windowcorner = main:FindFirstChildOfClass("UICorner")
+		instance.uicorner(root).CornerRadius = windowcorner and windowcorner.CornerRadius or UDim.new(0, 8)
+		local rootstroke = instance.uistroke(root)
+		rootstroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		rootstroke.Color = theme.Stroke
+		rootstroke.Thickness = 1
+
+		local icon = instance.imagelabel(root)
+		icon.Name = "Icon"
+		icon.AnchorPoint = Vector2.new(0, 0.5)
+		icon.BackgroundTransparency = 1
+		icon.ImageColor3 = theme.SubText
+		icon.Size = UDim2.new(0, 14, 0, 14)
+		icon.ZIndex = 2
+
+		local label = instance.textlabel(root)
+		label.Name = "Label"
+		label.BackgroundTransparency = 1
+		label.FontFace = FONT_BOLD
+		label.Text = title
+		label.TextColor3 = theme.Text
+		label.TextSize = ts(12)
+		label.TextTruncate = Enum.TextTruncate.AtEnd
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.ZIndex = 2
+
+		local track, knob
+		if istoggle then
+			track = instance.frame(root)
+			track.Name = "Switch"
+			track.AnchorPoint = Vector2.new(0, 0.5)
+			track.BackgroundColor3 = theme.Field
+			track.BorderSizePixel = 0
+			track.Size = UDim2.new(0, 28, 0, 14)
+			track.ZIndex = 2
+			instance.uicorner(track).CornerRadius = UDim.new(1, 0)
+			local trackstroke = instance.uistroke(track)
+			trackstroke.Color = Color3.fromRGB(255, 255, 255)
+			trackstroke.Thickness = 1
+			trackstroke.Transparency = 0.9
+			knob = instance.frame(track)
+			knob.Name = "Knob"
+			knob.BackgroundColor3 = theme.Text
+			knob.BorderSizePixel = 0
+			knob.Position = UDim2.new(0, 2, 0, 2)
+			knob.Size = UDim2.new(0, 10, 0, 10)
+			knob.ZIndex = 3
+			instance.uicorner(knob).CornerRadius = UDim.new(1, 0)
+		end
+
+		local divider = instance.frame(root)
+		divider.Name = "Divider"
+		divider.AnchorPoint = Vector2.new(0, 0.5)
+		divider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		divider.BackgroundTransparency = 0.88
+		divider.BorderSizePixel = 0
+		divider.Size = UDim2.new(0, 1, 0, 16)
+		divider.ZIndex = 2
+
+		local hit = instance.textbutton(root)
+		hit.Name = "Hit"
+		hit.AutoButtonColor = false
+		hit.BackgroundTransparency = 1
+		hit.Text = ""
+		hit.ZIndex = 4
+
+		local lockbtn = instance.textbutton(root)
+		lockbtn.Name = "Lock"
+		lockbtn.AutoButtonColor = false
+		lockbtn.AnchorPoint = Vector2.new(0, 0.5)
+		lockbtn.BackgroundTransparency = 1
+		lockbtn.Size = UDim2.new(0, 26, 0, 26)
+		lockbtn.Text = ""
+		lockbtn.ZIndex = 5
+		local lockimg = instance.imagelabel(lockbtn)
+		lockimg.AnchorPoint = Vector2.new(0.5, 0.5)
+		lockimg.BackgroundTransparency = 1
+		lockimg.Position = UDim2.new(0.5, 0, 0.5, 0)
+		lockimg.Size = UDim2.new(0, 13, 0, 13)
+		lockimg.ZIndex = 5
+		paintlockicon(lockimg, locked)
+
+		local function relayout()
+			local x = 10
+			local hasicon = icon.Image ~= ""
+			icon.Visible = hasicon
+			if hasicon then
+				icon.Position = UDim2.new(0, x, 0.5, 0)
+				x = x + 14 + 6
+			end
+			local w = math.min(220, textwidth(label.Text, 12, FONT_BOLD) + 2)
+			label.Position = UDim2.new(0, x, 0, 0)
+			label.Size = UDim2.new(0, w, 1, 0)
+			x = x + w + 8
+			if track then
+				track.Position = UDim2.new(0, x, 0.5, 0)
+				x = x + 28 + 8
+			end
+			divider.Position = UDim2.new(0, x, 0.5, 0)
+			hit.Size = UDim2.new(0, x, 1, 0)
+			x = x + 1 + 2
+			lockbtn.Position = UDim2.new(0, x, 0.5, 0)
+			x = x + 26 + 3
+			root.Size = UDim2.new(0, x, 0, H)
+		end
+
+		local function seticonname(name)
+			name = tostring(name or "")
+			if name == "" then
+				icon.Image = ""
+				icon.ImageRectOffset = Vector2.new(0, 0)
+				icon.ImageRectSize = Vector2.new(0, 0)
+			else
+				applyicon(icon, name, 48)
+			end
+			relayout()
+		end
+		seticonname(fcfg.Icon)
+
+		-- default spot: the right edge of the screen, each new one lands further down
+		if not saved and typeof(fcfg.Position) ~= "UDim2" then
+			local area = floatgui().AbsoluteSize
+			if area.X <= 1 then
+				area = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+			end
+			root.Position = UDim2.new(0, math.max(0, area.X - root.Size.X.Offset - 12), 0, 60 + (index - 1) * (H + 8))
+		end
+
+		local function clamp(x, y)
+			local gui = floatgui()
+			local area = gui.AbsoluteSize
+			if area.X <= 1 or area.Y <= 1 then
+				area = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+			end
+			local size = root.AbsoluteSize
+			return math.clamp(x, 0, math.max(0, area.X - size.X)), math.clamp(y, 0, math.max(0, area.Y - size.Y))
+		end
+
+		local function remember()
+			floatpos[posname] = {
+				x = math.floor(root.Position.X.Offset + 0.5),
+				y = math.floor(root.Position.Y.Offset + 0.5),
+				locked = locked,
+			}
+			savefloatpos()
+		end
+
+		local function tween(obj, props, instant)
+			if instant then
+				for k, v in pairs(props) do
+					obj[k] = v
+				end
+			else
+				sv.ts:Create(obj, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
+			end
+		end
+
+		local hovering = false
+		local function render(instant)
+			if istoggle then
+				local on = item.Value
+				tween(track, { BackgroundColor3 = on and guiconfig.Color or theme.Field }, instant)
+				tween(knob, {
+					Position = on and UDim2.new(0, 16, 0, 2) or UDim2.new(0, 2, 0, 2),
+					BackgroundColor3 = on and theme.AccentText or theme.Text,
+				}, instant)
+				tween(rootstroke, {
+					Color = on and guiconfig.Color or theme.Stroke,
+					Transparency = on and 0.35 or 0,
+				}, instant)
+				tween(label, { TextColor3 = on and theme.Text or theme.SubText }, instant)
+				tween(icon, { ImageColor3 = on and theme.Text or theme.SubText }, instant)
+			end
+			tween(root, { BackgroundColor3 = hovering and theme.Element or theme.Card }, instant)
+		end
+
+		hit.MouseEnter:Connect(function()
+			hovering = true
+			render(false)
+		end)
+		hit.MouseLeave:Connect(function()
+			hovering = false
+			render(false)
+		end)
+		lockbtn.MouseEnter:Connect(function()
+			lockimg.ImageColor3 = theme.Text
+		end)
+		lockbtn.MouseLeave:Connect(function()
+			lockimg.ImageColor3 = locked and theme.Gold or theme.SubText
+		end)
+
+		local function arg(a, b)
+			if a == item then
+				return b
+			end
+			return a
+		end
+
+		-- the value a toggle holds; also fires the callback
+		function item.Set(a, b, c)
+			if not istoggle then
+				return
+			end
+			local value = arg(a, b)
+			local instant = b
+			if a == item then
+				instant = c
+			end
+			item.Value = value and true or false
+			if configkey then
+				config.data[configkey] = item.Value
+				config:queuesave()
+			end
+			render(instant == true)
+			elevate()
+			local ok, err = pcall(callback, item.Value)
+			if not ok then
+				warn("FloatingToggle Callback error (" .. title .. "):", err)
+			end
+		end
+		item.SetValue = item.Set
+		function item.LoadValue(a, b)
+			item.Set(arg(a, b), true)
+		end
+		function item.ResetValue()
+			item.Set(hubdefault)
+		end
+		function item.GetValue()
+			return item.Value
+		end
+
+		function item.SetLocked(a, b)
+			locked = arg(a, b) == true
+			paintlockicon(lockimg, locked)
+			remember()
+			return locked
+		end
+		function item.SetDraggable(a, b)
+			return item.SetLocked(not (arg(a, b) == true))
+		end
+		function item.IsLocked()
+			return locked
+		end
+		function item.IsDraggable()
+			return not locked
+		end
+
+		local function applyvisible()
+			root.Visible = shown and floating.visible
+		end
+		item.Refresh = applyvisible
+		function item.SetVisible(a, b)
+			shown = arg(a, b) ~= false
+			applyvisible()
+		end
+		function item.Show()
+			shown = true
+			applyvisible()
+		end
+		function item.Hide()
+			shown = false
+			applyvisible()
+		end
+		function item.IsVisible()
+			return shown and floating.visible
+		end
+
+		function item.SetTitle(a, b)
+			label.Text = tostring(arg(a, b) or "")
+			title = label.Text
+			relayout()
+		end
+		function item.SetIcon(a, b)
+			seticonname(arg(a, b))
+		end
+		function item.SetPosition(a, b, c)
+			local x, y = b, c
+			if a ~= item then
+				x, y = a, b
+			end
+			if typeof(x) == "UDim2" then
+				root.Position = x
+			else
+				local cx, cy = clamp(tonumber(x) or 0, tonumber(y) or 0)
+				root.Position = UDim2.new(0, cx, 0, cy)
+			end
+			remember()
+		end
+		function item.Destroy()
+			for _, c in ipairs(connections) do
+				pcall(function()
+					c:Disconnect()
+				end)
+			end
+			connections = {}
+			local at = table.find(floating.list, item)
+			if at then
+				table.remove(floating.list, at)
+			end
+			if configkey and config.elements[configkey] == item then
+				config.elements[configkey] = nil
+			end
+			pcall(function()
+				root:Destroy()
+			end)
+		end
+		item.Instance = root
+
+		local function fire()
+			elevate()
+			if istoggle then
+				item.Set(not item.Value)
+			else
+				local ok, err = pcall(callback)
+				if not ok then
+					warn("FloatingButton Callback error (" .. title .. "):", err)
+				end
+			end
+		end
+
+		-- drag: a press that moves further than 6 px drags (when unlocked), a short press is a click
+		local dragging, moved = false, false
+		local dragstart, dragorigin = nil, nil
+		hit.InputBegan:Connect(function(input)
+			if
+				input.UserInputType ~= Enum.UserInputType.MouseButton1
+				and input.UserInputType ~= Enum.UserInputType.Touch
+			then
+				return
+			end
+			dragging, moved = true, false
+			dragstart = input.Position
+			dragorigin = root.Position
+			input.Changed:Connect(function()
+				if input.UserInputState ~= Enum.UserInputState.End or not dragging then
+					return
+				end
+				dragging = false
+				if moved then
+					remember()
+				else
+					fire()
+				end
+			end)
+		end)
+		connections[#connections + 1] = trackConnection(
+			sv.uis.InputChanged:Connect(function(input)
+				if
+					not dragging
+					or locked
+					or (
+						input.UserInputType ~= Enum.UserInputType.MouseMovement
+						and input.UserInputType ~= Enum.UserInputType.Touch
+					)
+				then
+					return
+				end
+				local delta = input.Position - dragstart
+				if not moved and delta.Magnitude < 6 then
+					return
+				end
+				moved = true
+				local cx, cy = clamp(dragorigin.X.Offset + delta.X, dragorigin.Y.Offset + delta.Y)
+				root.Position = UDim2.new(0, cx, 0, cy)
+			end),
+			"floating.drag." .. posname
+		)
+
+		lockbtn.Activated:Connect(function()
+			elevate()
+			item.SetLocked(not locked)
+		end)
+
+		if configkey then
+			config.elements[configkey] = item
+		end
+		floating.list[#floating.list + 1] = item
+		render(true)
+		task.defer(function()
+			if root.Parent then
+				local cx, cy = clamp(root.Position.X.Offset, root.Position.Y.Offset)
+				root.Position = UDim2.new(0, cx, 0, cy)
+			end
+		end)
+		if istoggle then
+			elevate()
+			local ok, err = pcall(callback, item.Value)
+			if not ok then
+				warn("FloatingToggle Callback error (" .. title .. "):", err)
+			end
+		end
+		return item
+	end
+
+	function tabs:CreateFloatingToggle(fcfg)
+		return buildfloating("toggle", fcfg)
+	end
+	tabs.CreateFloatingToogle = tabs.CreateFloatingToggle -- common misspelling, kept as an alias
+
+	function tabs:CreateFloatingButton(fcfg)
+		return buildfloating("button", fcfg)
+	end
+
+	local function floatingarg(a, b)
+		if a == tabs then
+			return b
+		end
+		return a
+	end
+
+	function tabs:SetFloatingVisible(a, b)
+		floating.visible = floatingarg(a, b) ~= false
+		for _, item in ipairs(floating.list) do
+			item.Refresh()
+		end
+		return floating.visible
+	end
+
+	function tabs:ShowFloating()
+		return tabs:SetFloatingVisible(true)
+	end
+
+	function tabs:HideFloating()
+		return tabs:SetFloatingVisible(false)
+	end
+
+	function tabs:SetFloatingLocked(a, b)
+		local state = floatingarg(a, b) == true
+		for _, item in ipairs(floating.list) do
+			item.SetLocked(state)
+		end
+		return state
+	end
+
+	function tabs:SetFloatingDraggable(a, b)
+		return not tabs:SetFloatingLocked(not (floatingarg(a, b) == true))
 	end
 
 	local hasActiveTab = false
