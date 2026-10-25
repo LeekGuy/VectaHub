@@ -5374,6 +5374,10 @@ function Chloex:Window(guiconfig)
 		local istoggle = kind == "toggle"
 		-- Link = an existing toggle (the one AddToggle returned): both stay in sync
 		local linked = fcfg.Link or fcfg.LinkTo or fcfg.Toggle
+		if type(linked) == "string" then
+			-- by name: the Flag (or Title) of an AddToggle that was already created
+			linked = config.elements["Toggle_" .. linked]
+		end
 		if type(linked) ~= "table" or type(linked.Set) ~= "function" or type(linked.OnChanged) ~= "function" then
 			linked = nil
 		end
