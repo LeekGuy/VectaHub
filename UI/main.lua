@@ -128,14 +128,14 @@ end
 local theme = {
 	Accent = Color3.fromRGB(232, 232, 238),
 	AccentText = Color3.fromRGB(14, 14, 17),
-	Backdrop = Color3.fromRGB(9, 9, 11),
-	Sidebar = Color3.fromRGB(13, 13, 16),
-	Card = Color3.fromRGB(19, 19, 23),
-	Element = Color3.fromRGB(27, 27, 32),
-	ElementHover = Color3.fromRGB(36, 36, 43),
-	Track = Color3.fromRGB(46, 46, 54),
-	Stroke = Color3.fromRGB(42, 42, 50),
-	StrokeSoft = Color3.fromRGB(31, 31, 37),
+	Backdrop = Color3.fromRGB(10, 10, 15),
+	Sidebar = Color3.fromRGB(13, 13, 19),
+	Card = Color3.fromRGB(19, 19, 27),
+	Element = Color3.fromRGB(28, 28, 38),
+	ElementHover = Color3.fromRGB(38, 38, 52),
+	Track = Color3.fromRGB(48, 48, 62),
+	Stroke = Color3.fromRGB(44, 44, 60),
+	StrokeSoft = Color3.fromRGB(32, 32, 44),
 	Text = Color3.fromRGB(238, 238, 243),
 	SubText = Color3.fromRGB(162, 162, 174),
 	Dim = Color3.fromRGB(116, 116, 128),
@@ -143,14 +143,14 @@ local theme = {
 	Bad = Color3.fromRGB(248, 113, 113),
 	Gold = Color3.fromRGB(245, 196, 81),
 	Blue = Color3.fromRGB(96, 165, 250),
-	Row = Color3.fromRGB(25, 25, 27),
-	Inner = Color3.fromRGB(40, 40, 43),
-	InnerHover = Color3.fromRGB(52, 52, 56),
-	Field = Color3.fromRGB(43, 43, 46),
-	Bar = Color3.fromRGB(66, 66, 70),
-	Pill = Color3.fromRGB(20, 20, 23),
-	TabActive = Color3.fromRGB(29, 29, 32),
-	Option = Color3.fromRGB(34, 34, 37),
+	Row = Color3.fromRGB(22, 22, 31),
+	Inner = Color3.fromRGB(38, 38, 52),
+	InnerHover = Color3.fromRGB(52, 52, 70),
+	Field = Color3.fromRGB(34, 34, 46),
+	Bar = Color3.fromRGB(62, 62, 80),
+	Pill = Color3.fromRGB(18, 18, 26),
+	TabActive = Color3.fromRGB(30, 30, 42),
+	Option = Color3.fromRGB(34, 34, 46),
 	ChatBg = Color3.fromRGB(15, 15, 17),
 	Mine = Color3.fromRGB(29, 29, 32),
 	Mention = Color3.fromRGB(38, 33, 22),
@@ -755,6 +755,22 @@ local function roundbg(parent, radius, color, native)
 		})
 	end
 	parent.BackgroundTransparency = 1
+	-- Element rows get a softer, rounder look: one hairline border and a bigger
+	-- radius. Only theme.Row rows (the main controls) get it, so it stays cheap.
+	if color == theme.Row then
+		radius = math.max(radius, 6)
+		if not parent:FindFirstChildOfClass("UICorner") then
+			instance.uicorner(parent).CornerRadius = UDim.new(0, radius)
+		end
+		if not parent:FindFirstChild("RowStroke") then
+			local rs = instance.uistroke(parent)
+			rs.Name = "RowStroke"
+			rs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			rs.Color = theme.StrokeSoft
+			rs.Thickness = 1
+			rs.Transparency = 0.25
+		end
+	end
 	local bg = instance.imagelabel(parent)
 	bg.Name = "Bg"
 	bg.BackgroundTransparency = 1
@@ -3429,6 +3445,41 @@ function Chloex:Window(guiconfig)
 	mainstroke.Color = theme.Stroke
 	mainstroke.Thickness = 1
 	main.Name = "Main"
+
+	-- ===== Window transparency =====
+	-- :Window({ Transparency = 0.3 }) (alias WindowTransparency), 0 = solid .. 0.9 = almost
+	-- see-through. Changeable later with Window:SetTransparency(0.5). The window
+	-- body fades first; rows follow at half strength so text keeps its contrast.
+	local basewindowalpha = rowalpha
+	local windowalpha = 0
+	local function applywindowalpha(value, fromuser)
+		value = math.clamp(tonumber(value) or 0, 0, 0.9)
+		windowalpha = value
+		if main:IsA("ImageLabel") then
+			main.BackgroundTransparency = value
+			main.ImageTransparency = value
+		else
+			main.BackgroundTransparency = value
+		end
+		mainstroke.Transparency = math.clamp(value * 0.6, 0, 0.7)
+		rowalpha = math.clamp(math.max(basewindowalpha, value * 0.5), 0, 0.9)
+		if fromuser then
+			local root = main:FindFirstChild("Layers")
+			if root then
+				for _, d in ipairs(root:GetDescendants()) do
+					if d:IsA("ImageLabel") and d.Name == "Bg" and d.ImageTransparency < 1 then
+						d.ImageTransparency = rowalpha
+					elseif d:IsA("Frame") and d.Name == "Section" then
+						local head = d:FindFirstChildOfClass("Frame")
+						if head and head.BackgroundTransparency < 1 then
+							head.BackgroundTransparency = math.clamp(0.35 + rowalpha, 0, 1)
+						end
+					end
+				end
+			end
+		end
+	end
+	applywindowalpha(guiconfig.Transparency or guiconfig.WindowTransparency or 0, false)
 	main.AnchorPoint = Vector2.new(0.5, 0.5)
 	main.BorderColor3 = Color3.fromRGB(0, 0, 0)
 	main.BorderSizePixel = 0
@@ -3687,7 +3738,8 @@ function Chloex:Window(guiconfig)
 	searchbox.PlaceholderColor3 = theme.Dim
 	searchbox.Text = ""
 	searchbox.TextColor3 = theme.Text
-	searchbox.TextSize = ts(12)
+	-- ts() already bottoms out at 8 with the pixel font, so the smaller Search text is set directly
+	searchbox.TextSize = PIXEL_CUSTOM and 7 or 10
 	searchbox.TextXAlignment = Enum.TextXAlignment.Left
 	searchbox.ClearTextOnFocus = false
 	searchbox.ClipsDescendants = true
@@ -4405,6 +4457,25 @@ function Chloex:Window(guiconfig)
 
 	function tabs:GetWindowKeybind()
 		return guifunc:GetWindowKeybind()
+	end
+
+	-- Window:SetTransparency(0.4) / Window.SetTransparency(0.4): 0 solid .. 0.9 faint.
+	-- Values above 1 are read as percent (40 = 0.4).
+	function tabs:SetTransparency(value)
+		if type(self) ~= "table" or self ~= tabs then
+			value = self
+		end
+		value = tonumber(value) or 0
+		if value > 1 then
+			value = value / 100
+		end
+		applywindowalpha(value, true)
+		return windowalpha
+	end
+	tabs.SetWindowTransparency = tabs.SetTransparency
+
+	function tabs:GetTransparency()
+		return windowalpha
 	end
 	function tabs:SetHeaderChips(list)
 		list = type(list) == "table" and list or {}
@@ -6256,8 +6327,9 @@ function Chloex:Window(guiconfig)
 
 			local sectionreal = instance.frame(section)
 			sectionreal.AnchorPoint = Vector2.new(0.5, 0)
-			sectionreal.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			sectionreal.BackgroundTransparency = 1
+			-- header strip: a faint tinted band so sections read as groups
+			sectionreal.BackgroundColor3 = theme.Card
+			sectionreal.BackgroundTransparency = math.clamp(0.35 + rowalpha, 0, 1)
 			sectionreal.BorderSizePixel = 0
 			sectionreal.Position = UDim2.new(0.5, 0, 0, 0)
 			sectionreal.Size = UDim2.new(1, 1, 0, 30)
@@ -9743,7 +9815,7 @@ function Chloex:Window(guiconfig)
 				searchbox.PlaceholderColor3 = theme.Dim
 				searchbox.FontFace = FONT_MEDIUM
 				searchbox.Text = ""
-				searchbox.TextSize = ts(12)
+				searchbox.TextSize = PIXEL_CUSTOM and 7 or 10
 				searchbox.TextColor3 = theme.Text
 				searchbox.TextXAlignment = Enum.TextXAlignment.Left
 				searchbox.TextTruncate = Enum.TextTruncate.AtEnd
@@ -12465,6 +12537,19 @@ function Chloex:Window(guiconfig)
 
 		local function buildConfigTab()
 			local ConfigSection = ConfigTab:AddSection("Config Configuration", true)
+			if guiconfig.TransparencySlider ~= false then
+				ConfigSection:AddSlider({
+					Title = "Window Transparency",
+					Content = "0 = solid, higher = more see-through",
+					Min = 0,
+					Max = 80,
+					Increment = 1,
+					Default = math.floor(windowalpha * 100 + 0.5),
+					Callback = function(value)
+						tabs:SetTransparency((tonumber(value) or 0) / 100)
+					end,
+				})
+			end
 			ConfigSection:AddConfigPanel()
 		end
 
